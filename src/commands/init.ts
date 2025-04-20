@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import ora from 'ora';
 import { DockerService } from '../services/docker.js';
 import { DEFAULT_PORTS } from '../config/ports.js';
+import crypto from 'crypto';
 
 export default class Init extends Command {
   static description = 'Initialize a new WordPress project';
@@ -109,62 +110,133 @@ exec docker-php-entrypoint "$@"`;
   }
 
   private async createDockerComposeFile(projectPath: string): Promise<void> {
-    const isArm64 = process.arch === 'arm64';
-    const dockerComposeContent = `version: '3'
+    const dockerComposeContent = `version: '3.8'
+
 services:
   wordpress:
-    build: .
-    platform: linux/${isArm64 ? 'arm64' : 'amd64'}
-    ports:
-      - "${DEFAULT_PORTS.WORDPRESS}:80"
+    image: wordpress:latest
+    container_name: wordpress
+    restart: unless-stopped
     environment:
-      WORDPRESS_DB_HOST: mysql
-      WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: wordpress
-      WORDPRESS_DB_NAME: wordpress
+      - WORDPRESS_DB_HOST=mysql
+      - WORDPRESS_DB_USER=wordpress
+      - WORDPRESS_DB_PASSWORD=\${WORDPRESS_DB_PASSWORD}
+      - WORDPRESS_DB_NAME=wordpress
     volumes:
       - ./wordpress:/var/www/html
+    ports:
+      - "8080:80"
     depends_on:
       - mysql
+    security_opt:
+      - no-new-privileges:true
+    user: "www-data:www-data"
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+      - /run/lock
 
   mysql:
     image: mysql:8.0
-    platform: linux/${isArm64 ? 'arm64' : 'amd64'}
+    container_name: mysql
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: wordpress
-      MYSQL_USER: wordpress
-      MYSQL_PASSWORD: wordpress
+      - MYSQL_DATABASE=wordpress
+      - MYSQL_USER=wordpress
+      - MYSQL_PASSWORD=\${MYSQL_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=\${MYSQL_ROOT_PASSWORD}
     volumes:
-      - mysql_data:/var/lib/mysql
+      - ./mysql:/var/lib/mysql
+    security_opt:
+      - no-new-privileges:true
+    user: "mysql:mysql"
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+      - /run/lock
 
   phpmyadmin:
-    image: arm64v8/phpmyadmin:latest
-    ports:
-      - "${DEFAULT_PORTS.PHPMYADMIN}:80"
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    restart: unless-stopped
     environment:
-      PMA_HOST: mysql
-      UPLOAD_LIMIT: 64M
+      - PMA_HOST=mysql
+      - PMA_USER=wordpress
+      - PMA_PASSWORD=\${MYSQL_PASSWORD}
+    ports:
+      - "8081:80"
     depends_on:
       - mysql
-
-volumes:
-  mysql_data:`;
+    security_opt:
+      - no-new-privileges:true
+    user: "www-data:www-data"
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+      - /run/lock`;
 
     await fs.writeFile(join(projectPath, 'docker-compose.yml'), dockerComposeContent);
   }
 
+  private generateSecurePassword(length: number = 32): string {
+    return crypto.randomBytes(length).toString('hex');
+  }
+
   private async createEnvFile(projectPath: string): Promise<void> {
+    const dbPassword = this.generateSecurePassword();
+    const rootPassword = this.generateSecurePassword();
+    const wordpressPassword = this.generateSecurePassword();
+
     const envContent = `WORDPRESS_DB_HOST=mysql
 WORDPRESS_DB_USER=wordpress
-WORDPRESS_DB_PASSWORD=wordpress
+WORDPRESS_DB_PASSWORD=${wordpressPassword}
 WORDPRESS_DB_NAME=wordpress
-MYSQL_ROOT_PASSWORD=root
+MYSQL_ROOT_PASSWORD=${rootPassword}
 MYSQL_DATABASE=wordpress
 MYSQL_USER=wordpress
-MYSQL_PASSWORD=wordpress`;
+MYSQL_PASSWORD=${dbPassword}`;
 
     await fs.writeFile(join(projectPath, '.env'), envContent);
+    
+    // Create a secure backup of credentials
+    const credentials = {
+      wordpress: {
+        user: 'wordpress',
+        password: wordpressPassword
+      },
+      mysql: {
+        user: 'wordpress',
+        password: dbPassword
+      },
+      root: {
+        password: rootPassword
+      }
+    };
+    
+    await fs.writeFile(
+      join(projectPath, '.credentials.json'),
+      JSON.stringify(credentials, null, 2)
+    );
+    
+    // Set strict permissions on sensitive files
+    await fs.chmod(join(projectPath, '.env'), 0o600);
+    await fs.chmod(join(projectPath, '.credentials.json'), 0o600);
   }
 
   async run(): Promise<void> {

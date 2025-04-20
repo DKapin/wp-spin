@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "author": "Daniel Kapin",
   "bin": {
-    "wp-spin": "./bin/run.js"
+    "wp-spin": "./bin/run"
   },
   "bugs": "https://github.com/Projects/wp-spinup-v2/issues",
   "dependencies": {
@@ -40,13 +40,20 @@
     "node": ">=18.0.0"
   },
   "files": [
-    "./bin",
-    "./dist",
-    "./oclif.manifest.json"
+    "/bin",
+    "/dist",
+    "/oclif.manifest.json",
+    "/README.md",
+    "/LICENSE"
   ],
-  "homepage": "https://github.com/Projects/wp-spinup-v2",
+  "homepage": "https://github.com/danielkapin/wp-spin",
   "keywords": [
-    "oclif"
+    "oclif",
+    "wordpress",
+    "docker",
+    "cli",
+    "development",
+    "environment"
   ],
   "license": "MIT",
   "main": "./dist/index.js",
@@ -63,9 +70,17 @@
     "format": "esm",
     "default": ".",
     "root": ".",
-    "ts": true
+    "ts": true,
+    "update": {
+      "s3": {
+        "host": "github.com/danielkapin/wp-spin/releases/download/latest"
+      }
+    }
   },
-  "repository": "Projects/wp-spinup-v2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danielkapin/wp-spin.git"
+  },
   "scripts": {
     "build": "shx rm -rf dist && tsc -b",
     "lint": "eslint",
@@ -74,7 +89,9 @@
     "prepack": "oclif manifest && oclif readme",
     "test": "mocha --forbid-only \"test/**/*.test.ts\"",
     "version": "oclif readme && git add README.md",
-    "deploy": "npm run build && npm run prepack && npm install -g ."
+    "deploy": "npm run build && npm run prepack && npm install -g .",
+    "prepare": "npm run build && npm run prepack"
   },
-  "types": "./dist/index.d.ts"
+  "types": "./dist/index.d.ts",
+  "private": true
 }
