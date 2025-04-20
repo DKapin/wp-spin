@@ -1,18 +1,16 @@
-import { DockerService } from '../services/docker.js';
-import { BaseCommand } from './base.js';
 import path from 'node:path';
 import ora from 'ora';
 
+import { DockerService } from '../services/docker.js';
+import { BaseCommand } from './base.js';
+
 export default class Restart extends BaseCommand {
   static description = 'Restart the WordPress environment';
-
-  static examples = [
+static examples = [
     '$ wp-spin restart',
   ];
-
-  static hidden = false;
-
-  protected docker: DockerService;
+static hidden = false;
+protected docker: DockerService;
 
   constructor(argv: string[], config: any) {
     super(argv, config);

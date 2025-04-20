@@ -1,7 +1,8 @@
-import { DockerService } from '../services/docker.js';
-import { BaseCommand } from './base.js';
 import path from 'node:path';
 import ora from 'ora';
+
+import { DockerService } from '../services/docker.js';
+import { BaseCommand } from './base.js';
 
 export default class Shell extends BaseCommand {
   static description = 'Open a shell in the WordPress container';
@@ -9,8 +10,7 @@ export default class Shell extends BaseCommand {
     '$ wp-spin shell',
   ];
   static hidden = false;
-
-  protected docker: DockerService;
+protected docker: DockerService;
 
   constructor(argv: string[], config: any) {
     super(argv, config);

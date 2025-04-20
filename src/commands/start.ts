@@ -1,43 +1,23 @@
-import { execa } from 'execa';
-import chalk from 'chalk';
-import ora from 'ora';
-import { join } from 'node:path';
 import { Config } from '@oclif/core';
-import { BaseCommand } from './base.js';
+import chalk from 'chalk';
+import { execa } from 'execa';
+import { join } from 'node:path';
+import ora from 'ora';
+
 import { DockerService } from '../services/docker.js';
+import { BaseCommand } from './base.js';
 
 export default class Start extends BaseCommand {
   static description = 'Start the WordPress environment';
-
-  static examples = [
+static examples = [
     '$ wp-spin start',
   ];
-
-  static hidden = false;
-
-  protected docker: DockerService;
+static hidden = false;
+protected docker: DockerService;
 
   constructor(argv: string[], config: Config) {
     super(argv, config);
     this.docker = new DockerService(process.cwd());
-  }
-
-  private async getActualPorts(): Promise<{ wordpress: string; phpmyadmin: string }> {
-    const { stdout: wordpressPort } = await execa('docker', [
-      'port',
-      'test-site-wordpress-1',
-      '80'
-    ]);
-    const { stdout: phpmyadminPort } = await execa('docker', [
-      'port',
-      'test-site-phpmyadmin-1',
-      '80'
-    ]);
-
-    return {
-      wordpress: wordpressPort.split(':')[1],
-      phpmyadmin: phpmyadminPort.split(':')[1]
-    };
   }
 
   async run(): Promise<void> {
@@ -72,5 +52,23 @@ export default class Start extends BaseCommand {
       spinner.fail(error instanceof Error ? error.message : 'An unknown error occurred');
       throw error;
     }
+  }
+
+  private async getActualPorts(): Promise<{ phpmyadmin: string; wordpress: string; }> {
+    const { stdout: wordpressPort } = await execa('docker', [
+      'port',
+      'test-site-wordpress-1',
+      '80'
+    ]);
+    const { stdout: phpmyadminPort } = await execa('docker', [
+      'port',
+      'test-site-phpmyadmin-1',
+      '80'
+    ]);
+
+    return {
+      phpmyadmin: phpmyadminPort.split(':')[1],
+      wordpress: wordpressPort.split(':')[1]
+    };
   }
 }

@@ -1,0 +1,1 @@
+#!/bin/sh\n\nnpm run build && npm run test && npm run lint

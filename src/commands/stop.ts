@@ -1,18 +1,16 @@
+import path from 'node:path';
+import ora from 'ora';
+
 import { DockerService } from '../services/docker.js';
 import { BaseCommand } from './base.js';
-import path from 'path';
-import ora from 'ora';
 
 export default class Stop extends BaseCommand {
   static description = 'Stop the WordPress environment';
-
-  static examples = [
+static examples = [
     '$ wp-spin stop',
   ];
-
-  static hidden = false;
-
-  protected docker: DockerService;
+static hidden = false;
+protected docker: DockerService;
 
   constructor(argv: string[], config: any) {
     super(argv, config);

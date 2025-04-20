@@ -1,30 +1,29 @@
 import {Flags} from '@oclif/core'
+
 import { BaseCommand } from './base.js'
 
 export default class Plugin extends BaseCommand {
   static description = 'Manage WordPress plugins'
-
-  static examples = [
+static examples = [
     '<%= config.bin %> plugin --add woocommerce',
     '<%= config.bin %> plugin --add woocommerce --version 8.0.0',
     '<%= config.bin %> plugin --remove woocommerce',
   ]
-
-  static flags = {
+static flags = {
     add: Flags.string({
       char: 'a',
       description: 'Name of the plugin to install',
       exclusive: ['remove'],
     }),
-    remove: Flags.string({
-      char: 'r',
-      description: 'Name of the plugin to remove',
-      exclusive: ['add'],
-    }),
     force: Flags.boolean({
       char: 'f',
       default: false,
       description: 'Force operation even if plugin exists/does not exist',
+    }),
+    remove: Flags.string({
+      char: 'r',
+      description: 'Name of the plugin to remove',
+      exclusive: ['add'],
     }),
     version: Flags.string({
       char: 'v',

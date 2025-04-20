@@ -22,17 +22,27 @@
   "devDependencies": {
     "@eslint/compat": "^1",
     "@oclif/prettier-config": "^0.2.1",
-    "@oclif/test": "^4",
-    "@types/chai": "^4",
-    "@types/mocha": "^10",
+    "@oclif/test": "^4.1.12",
+    "@types/chai": "^4.3.20",
+    "@types/chai-as-promised": "^7.1.8",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^18",
-    "chai": "^4",
+    "@types/sinon": "^17.0.3",
+    "@types/sinon-chai": "^3.2.12",
+    "chai": "^4.5.0",
+    "chai-as-promised": "^7.1.1",
     "eslint": "^9",
     "eslint-config-oclif": "^6",
     "eslint-config-prettier": "^10",
+    "husky": "^9.1.7",
     "mocha": "^10",
+    "nock": "^14.0.4",
+    "nyc": "^15.1.0",
     "oclif": "^4",
+    "rimraf": "^6.0.1",
     "shx": "^0.3.3",
+    "sinon": "^18.0.1",
+    "sinon-chai": "^3.7.0",
     "ts-node": "^10",
     "typescript": "^5"
   },
@@ -85,12 +95,28 @@
     "build": "shx rm -rf dist && tsc -b",
     "lint": "eslint",
     "postpack": "shx rm -f oclif.manifest.json",
-    "posttest": "npm run lint",
     "prepack": "oclif manifest && oclif readme",
-    "test": "mocha --forbid-only \"test/**/*.test.ts\"",
+    "test": "node test.js",
+    "test:watch": "mocha --watch --forbid-only \"test/**/*.test.ts\"",
+    "test:coverage": "nyc --reporter=html --reporter=text mocha --forbid-only \"test/**/*.test.ts\"",
+    "test:debug": "NODE_OPTIONS=--inspect-brk mocha --forbid-only \"test/**/*.test.ts\"",
+    "test:mocha": "nyc mocha --forbid-only \"test/**/*.test.ts\"",
+    "test:lint": "npm run test && npm run lint",
+    "coverage": "nyc report --reporter=text-lcov > coverage.lcov",
     "version": "oclif readme && git add README.md",
     "deploy": "npm run build && npm run prepack && npm install -g .",
-    "prepare": "npm run build && npm run prepack"
+    "prepare": "husky"
+  },
+  "nyc": {
+    "extension": [
+      ".ts"
+    ],
+    "exclude": [
+      "**/*.d.ts",
+      "test/**/*",
+      "dist/**/*"
+    ],
+    "all": true
   },
   "types": "./dist/index.d.ts",
   "private": true
