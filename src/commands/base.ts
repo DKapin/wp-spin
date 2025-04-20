@@ -6,11 +6,12 @@ import { execSync } from 'node:child_process';
 import * as os from 'node:os';
 import { join } from 'node:path';
 
+import { IDockerService } from '../services/docker-interface.js';
 import { DockerService } from '../services/docker.js';
 
 export class BaseCommand extends Command {
   static hidden = true;
-  protected dockerService: DockerService = new DockerService('');
+  protected dockerService: IDockerService = new DockerService('');
   protected projectPath: string = '';
 
   protected async checkDockerEnvironment(): Promise<void> {
@@ -100,7 +101,15 @@ export class BaseCommand extends Command {
   async init() {
     const homeDir = os.homedir();
     this.projectPath = join(homeDir, '.wp-spin');
-    this.dockerService = new DockerService(this.projectPath);
+    
+    // Use mock DockerService when testing
+    if (process.env.USE_DOCKER_MOCK === 'true') {
+      // Using dynamic import to avoid circular dependencies
+      const { DockerService: MockDockerService } = await import('../services/__mocks__/docker.js');
+      this.dockerService = new MockDockerService(this.projectPath);
+    } else {
+      this.dockerService = new DockerService(this.projectPath);
+    }
   }
 
   protected prettyError(title: string, message: string, suggestion?: string): never {

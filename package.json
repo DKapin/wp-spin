@@ -92,20 +92,27 @@
     "url": "git+https://github.com/danielkapin/wp-spin.git"
   },
   "scripts": {
-    "build": "shx rm -rf dist && tsc -b",
+    "build": "shx rm -rf dist && tsc --outDir dist && shx mkdir -p dist/config && shx cp src/config/ports.ts dist/config/ports.js",
     "lint": "eslint",
     "postpack": "shx rm -f oclif.manifest.json",
     "prepack": "oclif manifest && oclif readme",
     "test": "node test.js",
+    "test:mock": "node test/mock-test.js",
     "test:watch": "mocha --watch --forbid-only \"test/**/*.test.ts\"",
     "test:coverage": "nyc --reporter=html --reporter=text mocha --forbid-only \"test/**/*.test.ts\"",
     "test:debug": "NODE_OPTIONS=--inspect-brk mocha --forbid-only \"test/**/*.test.ts\"",
     "test:mocha": "nyc mocha --forbid-only \"test/**/*.test.ts\"",
     "test:lint": "npm run test && npm run lint",
+    "test:all": "npm run test && npm run lint && echo \"✅ All basic tests passed!\"",
+    "test:quick": "npm run test",
+    "test:verify": "npm run build && npm run test:all && echo \"✅ Verification complete!\"",
+    "test:ci": "npm run build && npm run test && npm run lint",
     "coverage": "nyc report --reporter=text-lcov > coverage.lcov",
     "version": "oclif readme && git add README.md",
     "deploy": "npm run build && npm run prepack && npm install -g .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "prepare:commit": "npm run build && npm run test && npm run lint",
+    "verify": "npm run test:verify"
   },
   "nyc": {
     "extension": [

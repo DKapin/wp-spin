@@ -3,15 +3,16 @@ import boxen from 'boxen';
 import chalk from 'chalk';
 import { execa } from 'execa';
 import * as fs from 'fs-extra';
-import { chmod, mkdir, unlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import * as net from 'node:net';
 import { arch, platform } from 'node:os';
 import { join } from 'node:path';
 import ora from 'ora';
 
 import { DEFAULT_PORTS } from '../config/ports.js';
+import { IDockerService } from './docker-interface.js';
 
-export class DockerService {
+export class DockerService implements IDockerService {
   private architecture = arch();
   private command?: Command;
   private platform = platform();
@@ -595,7 +596,7 @@ export class DockerService {
 
   private async updateDockerComposeImages(): Promise<void> {
     const dockerComposePath = join(this.projectPath, 'docker-compose.yml');
-    let content = await fs.readFile(dockerComposePath, 'utf8');
+    let content = await readFile(dockerComposePath, 'utf8');
     const images = this.getPlatformSpecificImages();
 
     // Update image references in docker-compose.yml
@@ -614,7 +615,7 @@ export class DockerService {
   private async updateDockerComposePorts(originalPort: number, newPort: number): Promise<void> {
     try {
       const dockerComposeFile = join(this.projectPath, 'docker-compose.yml');
-      const content = await fs.readFile(dockerComposeFile, 'utf8');
+      const content = await readFile(dockerComposeFile, 'utf8');
       
       const updatedContent = content.replaceAll(`${originalPort}:`, `${newPort}:`);
       

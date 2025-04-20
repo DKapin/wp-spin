@@ -1,0 +1,19 @@
+/**
+ * Interface for DockerService
+ * Both the real implementation and mock will implement this interface
+ */
+export interface IDockerService {
+  checkDiskSpace(): Promise<void>;
+  checkDockerComposeInstalled(): Promise<void>;
+  checkDockerInstalled(): Promise<void>;
+  checkDockerRunning(): Promise<void>;
+  checkMemory(): Promise<void>;
+  checkPorts(): Promise<void>;
+  checkProjectExists(): Promise<boolean>;
+  logs(): Promise<void>;
+  restart(): Promise<void>;
+  shell(): Promise<void>;
+  start(): Promise<void>;
+  status(): Promise<void>;
+  stop(): Promise<void>;
+} 

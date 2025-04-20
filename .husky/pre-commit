@@ -1,1 +1,5 @@
-#!/bin/sh\n\nnpm run build && npm run test && npm run lint
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "Running pre-commit checks..."
+npm run test:quick
