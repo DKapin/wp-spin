@@ -1,3 +1,4 @@
+import { Config } from '@oclif/core';
 import path from 'node:path';
 import ora from 'ora';
 
@@ -12,7 +13,7 @@ static examples = [
 static hidden = false;
 protected docker: DockerService;
 
-  constructor(argv: string[], config: any) {
+  constructor(argv: string[], config: Config) {
     super(argv, config);
     this.docker = new DockerService(process.cwd());
   }

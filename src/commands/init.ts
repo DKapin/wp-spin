@@ -5,7 +5,6 @@ import crypto from 'node:crypto';
 import { join } from 'node:path';
 import ora from 'ora';
 
-import { DEFAULT_PORTS } from '../config/ports.js';
 import { DockerService } from '../services/docker.js';
 
 export default class Init extends Command {
@@ -51,7 +50,8 @@ protected docker: DockerService;
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Init);
     const { name } = args;
-    const { 'from-github': fromGithub } = flags;
+    // Currently not using the fromGithub flag, but keeping it for future implementation
+    // const { 'from-github': fromGithub } = flags;
 
     const spinner = ora();
     const projectPath = join(process.cwd(), name);

@@ -181,10 +181,10 @@ export class DockerService implements IDockerService {
         }
         
         // In non-test environment, prompt user for action
-        let action = 'next'; // Default action
+        const action = 'next'; // Default action
         
         try {
-          // eslint-disable-next-line no-await-in-loop
+           
           const choices = [
             {
               name: `Use next available port (${nextPort})`,
@@ -201,18 +201,19 @@ export class DockerService implements IDockerService {
           ];
           
           console.log(chalk.yellow(`Port ${port} is already in use. Options:`));
-          choices.forEach((choice, i) => {
+          for (const [i, choice] of choices.entries()) {
             console.log(`${i + 1}. ${choice.name}`);
-          });
+          }
+
           console.log('Using option 1 by default. Edit code for interactive prompts.');
-        } catch (error) {
+        } catch {
           // If inquirer fails for any reason, use default action
           console.log(chalk.yellow(`Port ${port} is in use, using port ${nextPort} instead`));
         }
 
         switch (action) {
           case 'next': {
-            // eslint-disable-next-line no-await-in-loop
+             
             this.updateDockerComposePorts(port, nextPort);
             portsChanged = true;
             console.log(chalk.yellow(`Port ${port} is in use, using port ${nextPort} instead`));

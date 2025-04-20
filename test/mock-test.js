@@ -58,8 +58,8 @@ try {
   // Test init command
   console.log("\n🧪 Testing init command...");
   execSync(`node ${projectRoot}/bin/run.js init ${testDir}`, { 
-    stdio: 'inherit',
-    env: { ...process.env, USE_DOCKER_MOCK: 'true', NODE_ENV: 'test' }
+    env: { ...process.env, NODE_ENV: 'test', USE_DOCKER_MOCK: 'true' },
+    stdio: 'inherit'
   });
   console.log("✅ Init command successful!");
 
@@ -79,40 +79,40 @@ try {
   // Test start command
   console.log("\n🧪 Testing start command...");
   execSync(`cd "${testDir}" && node ${projectRoot}/bin/run.js start`, { 
-    stdio: 'inherit',
-    env: { ...process.env, USE_DOCKER_MOCK: 'true', NODE_ENV: 'test' }
+    env: { ...process.env, NODE_ENV: 'test', USE_DOCKER_MOCK: 'true' },
+    stdio: 'inherit'
   });
   console.log("✅ Start command successful!");
   
   // Test status command
   console.log("\n🧪 Testing status command...");
   execSync(`cd "${testDir}" && node ${projectRoot}/bin/run.js status`, { 
-    stdio: 'inherit',
-    env: { ...process.env, USE_DOCKER_MOCK: 'true', NODE_ENV: 'test' }
+    env: { ...process.env, NODE_ENV: 'test', USE_DOCKER_MOCK: 'true' },
+    stdio: 'inherit'
   });
   console.log("✅ Status command successful!");
   
   // Test stop command
   console.log("\n🧪 Testing stop command...");
   execSync(`cd "${testDir}" && node ${projectRoot}/bin/run.js stop`, { 
-    stdio: 'inherit',
-    env: { ...process.env, USE_DOCKER_MOCK: 'true', NODE_ENV: 'test' }
+    env: { ...process.env, NODE_ENV: 'test', USE_DOCKER_MOCK: 'true' },
+    stdio: 'inherit'
   });
   console.log("✅ Stop command successful!");
   
   // Test restart command
   console.log("\n🧪 Testing restart command...");
   execSync(`cd "${testDir}" && node ${projectRoot}/bin/run.js restart`, { 
-    stdio: 'inherit',
-    env: { ...process.env, USE_DOCKER_MOCK: 'true', NODE_ENV: 'test' }
+    env: { ...process.env, NODE_ENV: 'test', USE_DOCKER_MOCK: 'true' },
+    stdio: 'inherit'
   });
   console.log("✅ Restart command successful!");
   
   // Test logs command
   console.log("\n🧪 Testing logs command...");
   execSync(`cd "${testDir}" && node ${projectRoot}/bin/run.js logs`, { 
-    stdio: 'inherit',
-    env: { ...process.env, USE_DOCKER_MOCK: 'true', NODE_ENV: 'test' }
+    env: { ...process.env, NODE_ENV: 'test', USE_DOCKER_MOCK: 'true' },
+    stdio: 'inherit'
   });
   console.log("✅ Logs command successful!");
   
@@ -129,10 +129,10 @@ try {
   try {
     // This should fail because Docker is "not running"
     execSync(`cd "${testDir}" && node ${projectRoot}/bin/run.js start`, { 
-      stdio: 'ignore',
-      env: { ...process.env, USE_DOCKER_MOCK: 'true', NODE_ENV: 'test' }
+      env: { ...process.env, NODE_ENV: 'test', USE_DOCKER_MOCK: 'true' },
+      stdio: 'ignore'
     });
-  } catch (error) {
+  } catch {
     errorCaught = true;
     console.log("✅ Error handling test passed - Docker not running error caught correctly");
   }
@@ -159,6 +159,7 @@ try {
       } else {
         execSync(`rm -rf "${testDir}"`, { stdio: 'ignore' });
       }
+
       console.log("✨ Cleanup complete");
     } catch (error) {
       console.error("Failed to clean up test directory:", error.message);
