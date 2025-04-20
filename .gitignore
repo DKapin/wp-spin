@@ -1,0 +1,50 @@
+# Logs
+*-debug.log
+*-error.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+npm-error.log*
+yarn-error.log*
+pnpm-error.log*
+
+# System files
+**/.DS_Store
+/.idea
+/.vscode
+*.swp
+*.swo
+*~
+
+# Build and package files
+/dist
+/tmp
+*.tgz
+tsconfig.tsbuildinfo
+/bin
+
+# Dependencies
+/node_modules
+.pnpm-store/
+
+# Package manager files
+oclif.manifest.json
+yarn.lock
+pnpm-lock.yaml
+package-lock.json
+
+# WordPress specific
+wordpress/
+wp-content/uploads/
+wp-config.php
+
+# Docker configuration
+.env
+.env.local
+.env.*.local
+Dockerfile
+docker-entrypoint.sh
+
+# Test coverage
+/coverage
+
