@@ -1,7 +1,7 @@
 import { Command } from '@oclif/core';
 import boxen from 'boxen';
 import chalk from 'chalk';
-import execa from 'execa';
+import { execa } from 'execa';
 import fs from 'fs-extra';
 import inquirer from 'inquirer';
 import net from 'node:net';
