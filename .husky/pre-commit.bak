@@ -1,0 +1,36 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔍 Running pre-commit checks..."
+
+# Check if lint-staged is installed, if not, use regular checks
+if [ -x "$(command -v npx)" ] && [ -x "$(command -v lint-staged)" ]; then
+  echo "✓ Running lint-staged for efficient checks on staged files"
+  npx lint-staged
+else
+  # Type check
+  echo "🔎 Checking TypeScript types..."
+  npm run build --if-present -- --noEmit
+  if [ $? -ne 0 ]; then
+    echo "❌ TypeScript check failed. Please fix type errors before committing."
+    exit 1
+  fi
+  
+  # Run quick tests
+  echo "🧪 Running tests..."
+  npm run test:quick
+  if [ $? -ne 0 ]; then
+    echo "❌ Tests failed. Please fix test failures before committing."
+    exit 1
+  fi
+  
+  # Run linting
+  echo "🧹 Linting code..."
+  npm run lint
+  if [ $? -ne 0 ]; then
+    echo "❌ Linting failed. Please fix linting issues before committing."
+    exit 1
+  fi
+fi
+
+echo "✅ All checks passed! Proceeding with commit..."

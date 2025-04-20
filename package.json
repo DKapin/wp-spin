@@ -35,10 +35,12 @@
     "eslint-config-oclif": "^6",
     "eslint-config-prettier": "^10",
     "husky": "^9.1.7",
+    "lint-staged": "^15.5.1",
     "mocha": "^10",
     "nock": "^14.0.4",
     "nyc": "^15.1.0",
     "oclif": "^4",
+    "prettier": "^3.5.3",
     "rimraf": "^6.0.1",
     "shx": "^0.3.3",
     "sinon": "^18.0.1",
@@ -113,6 +115,14 @@
     "prepare": "husky",
     "prepare:commit": "npm run build && npm run test && npm run lint",
     "verify": "npm run test:verify"
+  },
+  "lint-staged": {
+    "*.{ts,js}": [
+      "eslint --fix --max-warnings=0"
+    ],
+    "*.json": [
+      "prettier --write"
+    ]
   },
   "nyc": {
     "extension": [
