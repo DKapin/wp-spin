@@ -1,10 +1,11 @@
 import { Command } from '@oclif/core';
 import boxen from 'boxen';
 import chalk from 'chalk';
-import { execa } from 'execa';
-import * as fs from 'fs-extra';
-import { chmod, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import * as net from 'node:net';
+import execa from 'execa';
+import fs from 'fs-extra';
+import inquirer from 'inquirer';
+import net from 'node:net';
+import { access, chmod, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { arch, platform } from 'node:os';
 import { join } from 'node:path';
 import ora from 'ora';
@@ -181,39 +182,31 @@ export class DockerService implements IDockerService {
         }
         
         // In non-test environment, prompt user for action
-        const action = 'next'; // Default action
+        let action: 'next' | 'stop' | 'cancel' = 'next';
         
         try {
-           
-          const choices = [
+          // Ask user what to do about the port conflict
+          const responses = await inquirer.prompt([
             {
-              name: `Use next available port (${nextPort})`,
-              value: 'next',
+              choices: [
+                { name: `Use next available port (${nextPort})`, value: 'next' },
+                { name: 'Cancel operation', value: 'cancel' },
+                { name: `Stop the running service on port ${port}`, value: 'stop' },
+              ],
+              message: `Port ${port} is already in use. What would you like to do?`,
+              name: 'action',
+              type: 'list',
             },
-            {
-              name: 'Stop the current instance',
-              value: 'stop',
-            },
-            {
-              name: 'Cancel operation',
-              value: 'cancel',
-            },
-          ];
+          ]);
           
-          console.log(chalk.yellow(`Port ${port} is already in use. Options:`));
-          for (const [i, choice] of choices.entries()) {
-            console.log(`${i + 1}. ${choice.name}`);
-          }
-
-          console.log('Using option 1 by default. Edit code for interactive prompts.');
+          action = responses.action;
         } catch {
-          // If inquirer fails for any reason, use default action
-          console.log(chalk.yellow(`Port ${port} is in use, using port ${nextPort} instead`));
+           // If inquirer fails for any reason, use default action
+           console.log(chalk.yellow(`Port ${port} is in use, using port ${nextPort} instead`));
         }
 
         switch (action) {
           case 'next': {
-             
             this.updateDockerComposePorts(port, nextPort);
             portsChanged = true;
             console.log(chalk.yellow(`Port ${port} is in use, using port ${nextPort} instead`));
