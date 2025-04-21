@@ -177,4 +177,17 @@ private spinner = ora();
     this.spinner.succeed('WordPress environment stopped');
     
   }
+
+  getPortMappings(): Record<number, number> {
+    return { ...this.portMappings };
+  }
+
+  getProjectPath(): string {
+    return this.projectPath;
+  }
+
+  async updateDockerComposePorts(originalPort: number, newPort: number): Promise<void> {
+    this.portMappings[originalPort] = newPort;
+    console.log(chalk.blue(`Mock: Port mapping stored: ${originalPort} -> ${newPort}`));
+  }
 } 

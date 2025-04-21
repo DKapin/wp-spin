@@ -1,7 +1,6 @@
 import { Config } from '@oclif/core';
 import chalk from 'chalk';
 import { execa } from 'execa';
-import { join } from 'node:path';
 import ora from 'ora';
 
 import { DockerService } from '../services/docker.js';
@@ -22,13 +21,20 @@ protected docker: DockerService;
 
   async run(): Promise<void> {
     const spinner = ora();
-    const projectPath = process.cwd();
 
     try {
-      // Check if project exists
-      if (!this.existsSync(join(projectPath, 'docker-compose.yml'))) {
-        this.error('No WordPress project found in current directory');
+      // Find the project root directory
+      const projectRoot = this.findProjectRoot();
+      
+      if (!projectRoot) {
+        this.error('No WordPress project found in this directory or any parent directory. Make sure you are inside a wp-spin project.');
       }
+      
+      // Update docker service with the correct project path
+      this.docker = new DockerService(projectRoot);
+      
+      console.log(chalk.blue(`Found WordPress project at: ${projectRoot}`));
+      spinner.start('Starting WordPress environment...');
 
       // Check Docker environment
       await this.checkDockerEnvironment();
@@ -55,20 +61,49 @@ protected docker: DockerService;
   }
 
   private async getActualPorts(): Promise<{ phpmyadmin: string; wordpress: string; }> {
-    const { stdout: wordpressPort } = await execa('docker', [
-      'port',
-      'test-site-wordpress-1',
-      '80'
-    ]);
-    const { stdout: phpmyadminPort } = await execa('docker', [
-      'port',
-      'test-site-phpmyadmin-1',
-      '80'
-    ]);
-
-    return {
-      phpmyadmin: phpmyadminPort.split(':')[1],
-      wordpress: wordpressPort.split(':')[1]
-    };
+    try {
+      // Get the project name from the Docker service's project path
+      const projectName = this.docker.getProjectPath().split('/').pop() || 'wp-spin';
+      
+      const { stdout: containersOutput } = await execa('docker', ['ps', '--format', '{{.Names}}']);
+      const containers = containersOutput.split('\n');
+      
+      // Find container names based on project name pattern
+      const wordpressContainer = containers.find(c => c.includes(`${projectName}_wordpress`));
+      const phpmyadminContainer = containers.find(c => c.includes(`${projectName}_phpmyadmin`));
+      
+      if (!wordpressContainer || !phpmyadminContainer) {
+        // If containers not found, use configured ports from Docker service
+        const portMappings = this.docker.getPortMappings();
+        return {
+          phpmyadmin: String(portMappings[8081] || 8081),
+          wordpress: String(portMappings[8080] || 8080)
+        };
+      }
+      
+      const { stdout: wordpressPort } = await execa('docker', [
+        'port',
+        wordpressContainer,
+        '80'
+      ]);
+      
+      const { stdout: phpmyadminPort } = await execa('docker', [
+        'port',
+        phpmyadminContainer,
+        '80'
+      ]);
+      
+      return {
+        phpmyadmin: phpmyadminPort.split(':')[1],
+        wordpress: wordpressPort.split(':')[1]
+      };
+    } catch {
+      // Fallback to default ports if there's an error
+      console.log(chalk.yellow('Could not determine actual ports, using default values'));
+      return {
+        phpmyadmin: '8081',
+        wordpress: '8080'
+      };
+    }
   }
 }

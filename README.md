@@ -98,13 +98,34 @@ wp-spin includes several security enhancements:
 ## Commands
 
 <!-- commands -->
+* [`wp-spin containers`](#wp-spin-containers)
 * [`wp-spin init NAME`](#wp-spin-init-name)
 * [`wp-spin logs`](#wp-spin-logs)
+* [`wp-spin ps`](#wp-spin-ps)
 * [`wp-spin restart`](#wp-spin-restart)
 * [`wp-spin shell`](#wp-spin-shell)
 * [`wp-spin start`](#wp-spin-start)
 * [`wp-spin status`](#wp-spin-status)
 * [`wp-spin stop`](#wp-spin-stop)
+
+## `wp-spin containers`
+
+Show status of Docker containers for this project
+
+```
+USAGE
+  $ wp-spin containers
+
+DESCRIPTION
+  Show status of Docker containers for this project
+
+ALIASES
+  $ wp-spin containers
+  $ wp-spin status
+
+EXAMPLES
+  $ wp-spin ps
+```
 
 ## `wp-spin init NAME`
 
@@ -112,14 +133,15 @@ Initialize a new WordPress project
 
 ```
 USAGE
-  $ wp-spin init NAME [-g] [-f]
+  $ wp-spin init NAME [-c] [-f] [-g <value>]
 
 ARGUMENTS
   NAME  Project name
 
 FLAGS
-  -f, --force        Force initialization even if directory exists
-  -g, --from-github  Import from a GitHub repository
+  -c, --from-current-dir     Use the current directory as the WordPress source if it contains a valid installation
+  -f, --force                Force initialization even if directory exists
+  -g, --from-github=<value>  Import from a GitHub repository containing a WordPress installation
 
 DESCRIPTION
   Initialize a new WordPress project
@@ -127,7 +149,9 @@ DESCRIPTION
 EXAMPLES
   $ wp-spin init my-wordpress-site
 
-  $ wp-spin init my-wordpress-site --from-github
+  $ wp-spin init my-wordpress-site --from-github https://github.com/user/wp-repo
+
+  $ wp-spin init my-wordpress-site --from-current-dir
 ```
 
 _See code: [src/commands/init.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/init.ts)_
@@ -148,6 +172,27 @@ EXAMPLES
 ```
 
 _See code: [src/commands/logs.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/logs.ts)_
+
+## `wp-spin ps`
+
+Show status of Docker containers for this project
+
+```
+USAGE
+  $ wp-spin ps
+
+DESCRIPTION
+  Show status of Docker containers for this project
+
+ALIASES
+  $ wp-spin containers
+  $ wp-spin status
+
+EXAMPLES
+  $ wp-spin ps
+```
+
+_See code: [src/commands/ps.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/ps.ts)_
 
 ## `wp-spin restart`
 
@@ -202,17 +247,21 @@ _See code: [src/commands/start.ts](https://github.com/danielkapin/wp-spin/blob/v
 
 ## `wp-spin status`
 
-Show the status of the WordPress environment
+Show status of Docker containers for this project
 
 ```
 USAGE
   $ wp-spin status
 
 DESCRIPTION
-  Show the status of the WordPress environment
+  Show status of Docker containers for this project
+
+ALIASES
+  $ wp-spin containers
+  $ wp-spin status
 
 EXAMPLES
-  $ wp-spin status
+  $ wp-spin ps
 ```
 
 _See code: [src/commands/status.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/status.ts)_

@@ -2,9 +2,12 @@ import { Command } from '@oclif/core';
 import boxen from 'boxen';
 import chalk from 'chalk';
 import { execa } from 'execa';
-import fs from 'fs-extra';
+import { constants } from 'node:fs';
+import type { Stats } from 'node:fs';
+import * as fs from 'node:fs/promises';
+import * as net from 'node:net';
+import * as path from 'node:path';
 import inquirer from 'inquirer';
-import net from 'node:net';
 import { access, chmod, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { arch, platform } from 'node:os';
 import { join } from 'node:path';
@@ -157,83 +160,195 @@ export class DockerService implements IDockerService {
     const ports = Object.values(DEFAULT_PORTS);
     let portsChanged = false;
     
-    // Check all ports first and store results
+    // Track conflicts for all ports up front
     const portConflicts = new Map<number, boolean>();
+    const portReplacements = new Map<number, number>();
+    const usedPorts = new Set<number>();
     
-    // Check ports sequentially to avoid await in loop error
+    // Check all ports first and store results
     for (const port of ports) {
-      // eslint-disable-next-line no-await-in-loop
-      const available = await this.isPortAvailable(port);
-      portConflicts.set(port, !available);
-    }
-    
-    // Handle conflicts
-    for (const [port, isConflict] of portConflicts.entries()) {
-      if (isConflict) {
+      try {
         // eslint-disable-next-line no-await-in-loop
-        const nextPort = await this.findNextAvailablePort(port);
-
-        // Auto-select next available port in test environment
-        if (process.env.NODE_ENV === 'test') {
-          this.updateDockerComposePorts(port, nextPort);
+        const available = await this.isPortAvailable(port);
+        portConflicts.set(port, !available);
+        
+        // If port is not available, find next available port immediately
+        if (!available) {
+          // eslint-disable-next-line no-await-in-loop
+          let nextPort = await this.findNextAvailablePort(port, usedPorts);
+          // Keep searching until we find a port that's not already assigned
+          while (usedPorts.has(nextPort)) {
+            // eslint-disable-next-line no-await-in-loop
+            nextPort = await this.findNextAvailablePort(nextPort, usedPorts);
+          }
+          
+          portReplacements.set(port, nextPort);
+          usedPorts.add(nextPort);
+          
+          // Update docker-compose immediately to ensure consistent state
+          // eslint-disable-next-line no-await-in-loop
+          await this.updateDockerComposePorts(port, nextPort);
           portsChanged = true;
           console.log(chalk.yellow(`Port ${port} is in use, using port ${nextPort} instead`));
-          continue;
+        } else {
+          // If the port is available, mark it as used so we don't assign it elsewhere
+          usedPorts.add(port);
         }
-        
-        // In non-test environment, prompt user for action
-        let action: 'next' | 'stop' | 'cancel' = 'next';
-        
-        try {
-          // Ask user what to do about the port conflict
-          const responses = await inquirer.prompt([
-            {
-              choices: [
-                { name: `Use next available port (${nextPort})`, value: 'next' },
-                { name: 'Cancel operation', value: 'cancel' },
-                { name: `Stop the running service on port ${port}`, value: 'stop' },
-              ],
-              message: `Port ${port} is already in use. What would you like to do?`,
-              name: 'action',
-              type: 'list',
-            },
-          ]);
+      } catch (error) {
+        this.spinner.warn(`Error checking port ${port}: ${error instanceof Error ? error.message : String(error)}`);
+        // Assume port is unavailable if we can't check it properly
+        // eslint-disable-next-line no-await-in-loop
+        const nextPort = await this.findNextAvailablePort(port + 1, usedPorts);
+        portReplacements.set(port, nextPort);
+        usedPorts.add(nextPort);
+        // eslint-disable-next-line no-await-in-loop
+        await this.updateDockerComposePorts(port, nextPort);
+        portsChanged = true;
+        console.log(chalk.yellow(`Port ${port} couldn't be checked properly, using port ${nextPort} instead`));
+      }
+    }
+    
+    // Handle interactive and non-interactive environments
+    if (process.env.NODE_ENV?.includes('test') || !process.stdin.isTTY) {
+      // Skip interactive prompts in test environments or non-interactive terminals
+    } else {
+      // Handle conflicts with user prompts for each port
+      for (const [port, isConflict] of portConflicts.entries()) {
+        if (isConflict && !portReplacements.has(port)) {
+          // eslint-disable-next-line no-await-in-loop
+          const nextPort = await this.findNextAvailablePort(port, usedPorts);
+          usedPorts.add(nextPort);
           
-          action = responses.action;
-        } catch {
-           // If inquirer fails for any reason, use default action
-           console.log(chalk.yellow(`Port ${port} is in use, using port ${nextPort} instead`));
-        }
-
-        switch (action) {
-          case 'next': {
-            this.updateDockerComposePorts(port, nextPort);
-            portsChanged = true;
-            console.log(chalk.yellow(`Port ${port} is in use, using port ${nextPort} instead`));
-            break;
-          }
-
-          case 'stop': {
+          // Check if Docker is using the port
+          let processInfo;
+          try {
+            // Try to get Docker container info first
             // eslint-disable-next-line no-await-in-loop
-            const { stdout } = await execa('docker', ['ps', '--format', '{{.ID}}', '--filter', `publish=${port}`]);
-            const containerId = stdout.trim();
-            if (containerId) {
-              // eslint-disable-next-line no-await-in-loop
-              await execa('docker', ['stop', containerId], { stdio: 'inherit' });
-              console.log(chalk.green(`Stopped container ${containerId} using port ${port}`));
+            const { stdout: dockerOutput } = await execa('docker', ['ps', '--format', '{{.Names}} ({{.Image}})', '--filter', `publish=${port}`], { reject: false, stdio: 'pipe' });
+            
+            if (dockerOutput && dockerOutput.trim()) {
+              processInfo = `Docker container: ${dockerOutput.trim()}`;
             } else {
-              throw new Error('Could not find container using the port');
+              // If not Docker, try to get general process info
+              if (this.platform === 'darwin' || this.platform === 'linux') {
+                // For macOS and Linux
+                // eslint-disable-next-line no-await-in-loop
+                const { stdout: lsofOutput } = await execa('lsof', ['-i', `:${port}`], { reject: false, stdio: 'pipe' });
+                if (lsofOutput) {
+                  const lines = lsofOutput.split('\n').filter(Boolean);
+                  if (lines.length > 1) {
+                    const parts = lines[1].split(/\s+/);
+                    processInfo = `Process: ${parts[0]} (PID: ${parts[1]})`;
+                  }
+                }
+              } else if (this.platform === 'win32') {
+                // For Windows
+                // eslint-disable-next-line no-await-in-loop
+                const { stdout: netstatOutput } = await execa('netstat', ['-ano', '|', 'findstr', `:${port}`], { reject: false, shell: true, stdio: 'pipe' });
+                if (netstatOutput) {
+                  const lines = netstatOutput.split('\n').filter(Boolean);
+                  if (lines.length > 0) {
+                    const parts = lines[0].trim().split(/\s+/);
+                    const pid = parts[parts.length - 1];
+                    processInfo = `Process with PID: ${pid}`;
+                  }
+                }
+              }
             }
-
-            break;
+          } catch {
+            // If we can't get process info, just continue with generic message
+            processInfo = 'unknown process';
           }
-
-          case 'cancel': {
-            throw new Error('Operation cancelled by user');
+          
+          // In non-test environment, prompt user for action
+          let action: 'next' | 'stop' | 'cancel' = 'next';
+          
+          try {
+            // Ask user what to do about the port conflict
+            const choices = [
+              { name: `Use next available port (${nextPort})`, value: 'next' },
+              { name: 'Cancel operation', value: 'cancel' }
+            ];
+            
+            // Only add stop option if we found a Docker container
+            if (processInfo && processInfo.includes('Docker container')) {
+              choices.splice(1, 0, { name: `Stop the process using port ${port} (${processInfo})`, value: 'stop' });
+            }
+            
+            const responses = await inquirer.prompt([
+              {
+                choices,
+                message: `Port ${port} is already in use${processInfo ? ` by ${processInfo}` : ''}. What would you like to do?`,
+                name: 'action',
+                type: 'list',
+              },
+            ]);
+            
+            action = responses.action;
+          } catch {
+             // If inquirer fails for any reason, use default action
+             console.log(chalk.yellow(`Port ${port} is in use, using port ${nextPort} instead`));
+             action = 'next';
           }
-
-          default: {
-            throw new Error('Invalid action selected');
+  
+          switch (action) {
+            case 'next': {
+              // eslint-disable-next-line no-await-in-loop
+              await this.updateDockerComposePorts(port, nextPort);
+              portsChanged = true;
+              console.log(chalk.yellow(`Port ${port} is in use, using port ${nextPort} instead`));
+              break;
+            }
+  
+            case 'stop': {
+              try {
+                // eslint-disable-next-line no-await-in-loop
+                const { stdout } = await execa('docker', ['ps', '--format', '{{.ID}}', '--filter', `publish=${port}`]);
+                const containerId = stdout.trim();
+                if (containerId) {
+                  this.spinner.start(`Stopping container ${containerId} using port ${port}...`);
+                  // eslint-disable-next-line no-await-in-loop
+                  await execa('docker', ['stop', containerId]);
+                  this.spinner.succeed(`Stopped container ${containerId} using port ${port}`);
+                  
+                  // Verify the port is now available
+                  // eslint-disable-next-line no-await-in-loop
+                  const isNowAvailable = await this.isPortAvailable(port);
+                  if (isNowAvailable) {
+                    // Port is now available, so we can use it
+                    usedPorts.add(port);
+                  } else {
+                    console.log(chalk.yellow(`Port ${port} is still in use after stopping the container. Using port ${nextPort} instead.`));
+                    // eslint-disable-next-line no-await-in-loop
+                    await this.updateDockerComposePorts(port, nextPort);
+                    portsChanged = true;
+                  }
+                } else {
+                  console.log(chalk.yellow(`No Docker container found using port ${port}. Using port ${nextPort} instead.`));
+                  // eslint-disable-next-line no-await-in-loop
+                  await this.updateDockerComposePorts(port, nextPort);
+                  portsChanged = true;
+                }
+              } catch (error) {
+                this.spinner.fail(`Failed to stop container on port ${port}`);
+                console.log(chalk.yellow(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`));
+                console.log(chalk.yellow(`Using port ${nextPort} instead.`));
+                // eslint-disable-next-line no-await-in-loop
+                await this.updateDockerComposePorts(port, nextPort);
+                portsChanged = true;
+              }
+              break;
+            }
+  
+            case 'cancel': {
+              this.spinner.fail('Operation cancelled by user');
+              throw new Error('Operation cancelled by user');
+            }
+  
+            default: {
+              this.spinner.fail('Invalid action selected');
+              throw new Error('Invalid action selected');
+            }
           }
         }
       }
@@ -252,7 +367,12 @@ export class DockerService implements IDockerService {
 
   async checkProjectExists(): Promise<boolean> {
     const dockerComposePath = join(this.projectPath, 'docker-compose.yml');
-    return fs.pathExists(dockerComposePath);
+    try {
+      await readFile(dockerComposePath);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async logs(): Promise<void> {
@@ -300,6 +420,7 @@ export class DockerService implements IDockerService {
 
   async shell(): Promise<void> {
     try {
+      // Use the service name (wordpress) instead of container name to avoid conflicts
       await this.runDockerCompose(['exec', 'wordpress', 'bash']);
     } catch (error) {
       if (error instanceof Error) {
@@ -398,6 +519,15 @@ export class DockerService implements IDockerService {
     const images = this.getPlatformSpecificImages();
     const isArm = this.architecture === 'arm64';
     
+    // Get WordPress port (use mapping if available or default)
+    const wordpressPort = this.portMappings[DEFAULT_PORTS.WORDPRESS] || DEFAULT_PORTS.WORDPRESS;
+    
+    // Get phpMyAdmin port (use mapping if available or default)
+    const phpmyadminPort = this.portMappings[DEFAULT_PORTS.PHPMYADMIN] || DEFAULT_PORTS.PHPMYADMIN;
+    
+    // Get MySQL port (use mapping if available or default)
+    const mysqlPort = this.portMappings[DEFAULT_PORTS.MYSQL] || DEFAULT_PORTS.MYSQL;
+    
     const compose = {
       services: {
         mysql: {
@@ -417,8 +547,8 @@ export class DockerService implements IDockerService {
             PMA_HOST: 'mysql',
           },
           image: images.phpmyadmin,
-          platform: isArm ? 'linux/amd64' : undefined,
-          ports: ['8085:80'],
+          platform: 'linux/amd64',
+          ports: [`${phpmyadminPort}:80`],
         },
         wordpress: {
           dependsOn: ['mysql'],
@@ -429,7 +559,7 @@ export class DockerService implements IDockerService {
             WORDPRESS_DB_USER: 'wordpress',
           },
           image: images.wordpress,
-          ports: ['8084:80'],
+          ports: [`${wordpressPort}:80`],
           volumes: [
             `${wordpressPath}:/var/www/html`,
           ],
@@ -492,11 +622,17 @@ export class DockerService implements IDockerService {
     }
   }
 
-  private async findNextAvailablePort(port: number): Promise<number> {
+  private async findNextAvailablePort(port: number, usedPorts = new Set<number>()): Promise<number> {
     let nextPort = port + 1;
     
     // Check ports sequentially to avoid multiple awaits in loop
     while (nextPort < 65_535) {
+      // Skip if we've already decided to use this port for another service
+      if (usedPorts.has(nextPort)) {
+        nextPort += 1;
+        continue;
+      }
+      
       // eslint-disable-next-line no-await-in-loop
       const isAvailable = await this.isPortAvailable(nextPort);
       
@@ -517,25 +653,23 @@ export class DockerService implements IDockerService {
   private getPlatformSpecificImages(): { mysql: string; phpmyadmin: string; wordpress: string } {
     const isArm = this.architecture === 'arm64';
     return {
-      mysql: isArm ? 'arm64v8/mysql:8.0' : 'mysql:8.0',
+      // For ARM64 architecture, use mariadb instead of mysql which has better ARM compatibility
+      mysql: isArm ? 'mariadb:10.6' : 'mysql:8.0',
       phpmyadmin: 'phpmyadmin:latest',
       wordpress: isArm ? 'arm64v8/wordpress:latest' : 'wordpress:latest'
     };
   }
 
-  private isPortAvailable(port: number): Promise<boolean> {
-    // Use net module to check if port is available
+  private async isPortAvailable(port: number): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
       const server = net.createServer();
       server.once('error', () => {
         resolve(false);
       });
-      
       server.once('listening', () => {
         server.close();
         resolve(true);
       });
-      
       server.listen(port);
     });
   }
@@ -590,7 +724,7 @@ export class DockerService implements IDockerService {
 
   private async updateDockerComposeImages(): Promise<void> {
     const dockerComposePath = join(this.projectPath, 'docker-compose.yml');
-    let content = await readFile(dockerComposePath, 'utf8');
+    let content = await fs.readFile(dockerComposePath, 'utf8');
     const images = this.getPlatformSpecificImages();
 
     // Update image references in docker-compose.yml
@@ -606,16 +740,22 @@ export class DockerService implements IDockerService {
     await fs.writeFile(dockerComposePath, content);
   }
 
-  private async updateDockerComposePorts(originalPort: number, newPort: number): Promise<void> {
+  public async updateDockerComposePorts(originalPort: number, newPort: number): Promise<void> {
     try {
       const dockerComposeFile = join(this.projectPath, 'docker-compose.yml');
-      const content = await readFile(dockerComposeFile, 'utf8');
       
-      const updatedContent = content.replaceAll(`${originalPort}:`, `${newPort}:`);
-      
-      await writeFile(dockerComposeFile, updatedContent);
-      
+      // First record port mapping regardless of file existence
       this.portMappings[originalPort] = newPort;
+      
+      // If the file exists, update it
+      try {
+        const content = await fs.readFile(dockerComposeFile, 'utf8');
+        const updatedContent = content.replaceAll(`${originalPort}:`, `${newPort}:`);
+        await fs.writeFile(dockerComposeFile, updatedContent);
+      } catch {
+        // Just log that we're storing the mapping for later use
+        console.log(chalk.blue(`Port mapping stored: ${originalPort} -> ${newPort}`));
+      }
     } catch (error) {
       console.error(`Failed to update Docker Compose ports: ${error}`);
       throw error;
@@ -626,6 +766,10 @@ export class DockerService implements IDockerService {
     this.spinner.start('Waiting for MySQL to be ready...');
     let attempts = 0;
     const maxAttempts = 30;
+    
+    // Get the project name for the MySQL container
+    const projectName = this.projectPath.split('/').pop() || 'wp-spin';
+    const mysqlContainer = `${projectName}_mysql`;
     
     // Use a loop with explicit eslint disable for waiting
     while (attempts < maxAttempts) {
@@ -652,5 +796,17 @@ export class DockerService implements IDockerService {
       'MySQL failed to start within the expected time.',
       'Please check your Docker configuration and try again.'
     );
+  }
+
+  public getPortMappings(): Record<number, number> {
+    return { ...this.portMappings };
+  }
+
+  /**
+   * Returns the current project path
+   * @returns The absolute path to the project root directory
+   */
+  public getProjectPath(): string {
+    return this.projectPath;
   }
 } 

@@ -94,10 +94,13 @@
     "url": "git+https://github.com/danielkapin/wp-spin.git"
   },
   "scripts": {
-    "build": "shx rm -rf dist && tsc --outDir dist && shx mkdir -p dist/config && shx cp src/config/ports.ts dist/config/ports.js",
+    "clean": "shx rm -rf dist oclif.manifest.json",
+    "build": "npm run clean && npx tsc --build --force && shx mkdir -p dist/config && shx cp -r src/config/ports.ts dist/config/",
+    "manifest": "oclif manifest",
+    "readme": "oclif readme",
     "lint": "eslint",
     "postpack": "shx rm -f oclif.manifest.json",
-    "prepack": "oclif manifest && oclif readme",
+    "prepack": "npm run manifest && npm run readme",
     "test": "node test.js",
     "test:mock": "node test/mock-test.js",
     "test:watch": "mocha --watch --forbid-only \"test/**/*.test.ts\"",
@@ -110,8 +113,8 @@
     "test:verify": "npm run build && npm run test:all && echo \"✅ Verification complete!\"",
     "test:ci": "npm run build && npm run test && npm run lint",
     "coverage": "nyc report --reporter=text-lcov > coverage.lcov",
-    "version": "oclif readme && git add README.md",
-    "deploy": "npm run build && npm run prepack && npm install -g .",
+    "version": "npm run readme && git add README.md",
+    "deploy": "npm run build && npm run manifest && npm run readme && npm install -g .",
     "prepare": "husky",
     "prepare:commit": "npm run build && npm run test && npm run lint",
     "verify": "npm run test:verify"

@@ -10,10 +10,13 @@ export interface IDockerService {
   checkMemory(): Promise<void>;
   checkPorts(): Promise<void>;
   checkProjectExists(): Promise<boolean>;
+  getPortMappings(): Record<number, number>;
+  getProjectPath(): string;
   logs(): Promise<void>;
   restart(): Promise<void>;
   shell(): Promise<void>;
   start(): Promise<void>;
   status(): Promise<void>;
   stop(): Promise<void>;
+  updateDockerComposePorts(originalPort: number, newPort: number): Promise<void>;
 } 

@@ -8,7 +8,8 @@
     "target": "es2022",
     "moduleResolution": "node16",
     "composite": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true
   },
   "include": ["./src/**/*"],
   "ts-node": {

@@ -1,7 +1,7 @@
 import { Command } from '@oclif/core';
 import boxen from 'boxen';
 import chalk from 'chalk';
-import * as fs from 'fs-extra';
+import fs from 'fs-extra';
 import { execSync } from 'node:child_process';
 import * as os from 'node:os';
 import { join } from 'node:path';
@@ -56,8 +56,7 @@ export class BaseCommand extends Command {
 
   protected existsSync(filePath: string): boolean {
     try {
-      fs.accessSync(filePath);
-      return true;
+      return fs.existsSync(filePath);
     } catch {
       return false;
     }
@@ -146,6 +145,98 @@ export class BaseCommand extends Command {
       execSync(`docker exec ${wordpressContainer} ${command}`, {stdio: 'inherit'});
     } catch (error) {
       this.error(`Failed to execute WP-CLI command: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Finds the root directory of a wp-spin project by walking up the directory tree
+   * @returns The absolute path to the project root or null if not found
+   */
+  protected findProjectRoot(startPath: string = process.cwd()): string | null {
+    // Set DEBUG=true in environment to see detailed debugging
+    const DEBUG = process.env.DEBUG === 'true';
+    
+    if (DEBUG) {
+      console.log(`Checking directory for project: ${startPath}`);
+    }
+    
+    // Check if the current directory is a valid wp-spin project
+    const isProject = this.isWpSpinProject(startPath);
+    
+    if (DEBUG) {
+      console.log(`Is project directory? ${isProject}`);
+      
+      // Additional debugging checks
+      const wpSpinExists = fs.existsSync(join(startPath, '.wp-spin'));
+      const dockerComposeExists = fs.existsSync(join(startPath, 'docker-compose.yml'));
+      const envExists = fs.existsSync(join(startPath, '.env'));
+      
+      console.log(`.wp-spin exists? ${wpSpinExists}`);
+      console.log(`docker-compose.yml exists? ${dockerComposeExists}`);
+      console.log(`.env exists? ${envExists}`);
+    }
+    
+    if (isProject) {
+      return startPath;
+    }
+
+    // Get the parent directory
+    const parentDir = join(startPath, '..');
+    
+    // If we've reached the filesystem root, stop looking
+    if (parentDir === startPath) {
+      if (DEBUG) {
+        console.log('Reached filesystem root, stopping search');
+      }
+      return null;
+    }
+    
+    // Recursively check the parent directory
+    return this.findProjectRoot(parentDir);
+  }
+  
+  /**
+   * Checks if a directory is a valid wp-spin project
+   * @param dir The directory to check
+   * @returns true if the directory is a valid wp-spin project
+   */
+  protected isWpSpinProject(dir: string): boolean {
+    // Set DEBUG=true in environment to see detailed debugging
+    const DEBUG = process.env.DEBUG === 'true';
+    
+    try {
+      // First try a direct check for the .wp-spin marker file (preferred method)
+      const wpSpinPath = join(dir, '.wp-spin');
+      const wpSpinExists = fs.existsSync(wpSpinPath);
+      
+      if (DEBUG) {
+        console.log(`Direct check for .wp-spin at ${wpSpinPath}: ${wpSpinExists}`);
+      }
+      
+      if (wpSpinExists) {
+        return true;
+      }
+      
+      // Fall back to checking for required files (for backward compatibility)
+      const requiredFiles = ['docker-compose.yml', '.env'];
+      const allFilesExist = requiredFiles.every(file => {
+        const filePath = join(dir, file);
+        const exists = fs.existsSync(filePath);
+        
+        if (DEBUG) {
+          console.log(`Checking for ${file} at ${filePath}: ${exists}`);
+        }
+        
+        return exists;
+      });
+      
+      return allFilesExist;
+    } catch (error) {
+      // Add extra error handling to debug issues
+      if (DEBUG) {
+        console.error(`Error checking if directory is a project: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return false;
     }
   }
 }
