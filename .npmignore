@@ -1,0 +1,33 @@
+# Source code
+src/
+test/
+tests/
+
+# Configuration files
+.eslintrc*
+.prettierrc*
+.mocharc*
+.nyc_output
+.github/
+.vscode/
+.husky/
+.editorconfig
+.gitignore
+tsconfig.json
+tsconfig.tsbuildinfo
+
+# Test files
+coverage/
+*.log
+*.test.js
+*.test.ts
+
+# Development files
+my-wordress-site/
+fix-lint.sh
+typescript-errors.log
+.env
+
+# Don't ignore dist folder or package files
+!dist/
+!oclif.manifest.json 
