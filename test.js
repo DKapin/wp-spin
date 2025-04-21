@@ -9,10 +9,10 @@ process.env.NODE_ENV = 'test';
 // Check for critical files
 const requiredFiles = [
   "package.json",
-  "src/index.ts",
-  "src/commands/init.ts",
-  "src/commands/start.ts",
-  "src/commands/stop.ts",
+  "dist/index.js",
+  "dist/commands/init.js",
+  "dist/commands/start.js",
+  "dist/commands/stop.js",
   "bin/run.js"
 ];
 

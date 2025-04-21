@@ -2,4 +2,4 @@
 
 echo "🚀 Running pre-push checks..."
 echo "Running tests and build verification before pushing..."
-npm run build && npm run test 
+npm run build && npm run manifest && npm run test 

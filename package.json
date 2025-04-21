@@ -74,7 +74,7 @@
     "bin": "wp-spin",
     "dirname": "wp-spin",
     "commands": "./dist/commands",
-    "commandsDir": "./src/commands",
+    "commandsDir": "./dist/commands",
     "plugins": [],
     "hooks": {},
     "topicSeparator": " ",
@@ -95,7 +95,7 @@
   },
   "scripts": {
     "clean": "shx rm -rf dist oclif.manifest.json",
-    "build": "npm run clean && npx tsc --build --force && shx mkdir -p dist/config && shx cp -r src/config/ports.ts dist/config/",
+    "build": "npm run clean && npx tsc --build --force",
     "manifest": "oclif manifest",
     "readme": "oclif readme",
     "lint": "eslint",
