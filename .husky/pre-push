@@ -1,6 +1,12 @@
 #!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
+
+# Ignore any parameters passed by git
+while read local_ref local_sha remote_ref remote_sha
+do
+  # Just read them and do nothing
+  :
+done
 
 echo "🚀 Running pre-push checks..."
 echo "Running tests and build verification before pushing..."
-npm run build && npm run manifest && npm run test 
+cd "$(git rev-parse --show-toplevel)" && npm run build && npm run manifest && npm run test 
