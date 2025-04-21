@@ -4,13 +4,13 @@ import { execa } from 'execa';
 import fs from 'fs-extra';
 import inquirer from 'inquirer';
 import crypto from 'node:crypto';
+import net from 'node:net';
 import { arch, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import net from 'node:net';
 import ora from 'ora';
 
-import { DockerService } from '../services/docker.js';
 import { DEFAULT_PORTS } from '../config/ports.js';
+import { DockerService } from '../services/docker.js';
 
 export default class Init extends Command {
   static args = {
@@ -23,14 +23,14 @@ static examples = [
     '$ wp-spin init my-wordpress-site --from-current-dir',
   ];
 static flags = {
+    force: Flags.boolean({ 
+      char: 'f', 
+      description: 'Force initialization even if directory exists' 
+    }),
     'from-current-dir': Flags.boolean({
       char: 'c',
       description: 'Use the current directory as the WordPress source if it contains a valid installation',
       required: false,
-    }),
-    force: Flags.boolean({ 
-      char: 'f', 
-      description: 'Force initialization even if directory exists' 
     }),
     'from-github': Flags.string({
       char: 'g',
@@ -39,12 +39,14 @@ static flags = {
     }),
   };
 protected docker: DockerService;
+// Add this property to the class to store the MySQL init script path
+  private mysqlInitScriptPath: string = '';
 
   constructor(argv: string[], config: Config) {
     super(argv, config);
     this.docker = new DockerService(process.cwd());
   }
-
+  
   protected async ensureDockerEnvironment(): Promise<void> {
     try {
       // Check system platform and architecture
@@ -64,117 +66,6 @@ protected docker: DockerService;
     }
   }
   
-  /**
-   * Checks the system platform and architecture
-   * Provides warnings or informational messages based on system architecture
-   */
-  private async checkSystem(): Promise<void> {
-    const spinner = ora('Checking system platform...').start();
-    const platformType = process.platform;
-    const architecture = arch();
-    
-    spinner.succeed(`Detected platform: ${platformType} (${architecture})`);
-    
-    // Warn about potential issues based on platform/architecture
-    if (architecture === 'arm64') {
-      console.log(chalk.yellow('ℹ️ ARM64 architecture detected'));
-      console.log(chalk.yellow('  - Some Docker images may require platform specification'));
-      console.log(chalk.yellow('  - phpMyAdmin will use linux/amd64 platform for compatibility'));
-    }
-    
-    if (platformType === 'darwin') {
-      // macOS-specific checks
-      console.log(chalk.blue('ℹ️ macOS detected'));
-      console.log(chalk.blue('  - Using Docker Desktop for macOS'));
-    } else if (platformType === 'linux') {
-      console.log(chalk.blue('ℹ️ Linux detected'));
-    } else if (platformType === 'win32') {
-      console.log(chalk.blue('ℹ️ Windows detected'));
-      console.log(chalk.blue('  - Using Docker Desktop for Windows'));
-      console.log(chalk.yellow('  - Path mapping may differ from Unix-based systems'));
-    }
-  }
-  
-  /**
-   * Clones a GitHub repository to a temporary directory
-   * @param repoUrl GitHub repository URL
-   * @returns Path to the cloned repository
-   */
-  private async cloneGitHubRepo(repoUrl: string): Promise<string> {
-    const spinner = ora('Cloning GitHub repository...').start();
-    const tempDir = join(tmpdir(), `wp-spin-${Date.now()}`);
-    
-    try {
-      await fs.ensureDir(tempDir);
-      await execa('git', ['clone', repoUrl, tempDir, '--depth', '1']);
-      spinner.succeed('Repository cloned successfully');
-      return tempDir;
-    } catch (error) {
-      spinner.fail('Failed to clone repository');
-      if (error instanceof Error) {
-        throw new TypeError(`Failed to clone repository: ${error.message}`);
-      }
-      
-      throw new TypeError('Failed to clone repository');
-    }
-  }
-  
-  /**
-   * Copies WordPress files from source to destination
-   * @param sourcePath Source directory with WordPress files
-   * @param destinationPath Destination directory
-   */
-  private async copyWordPressFiles(sourcePath: string, destinationPath: string): Promise<void> {
-    const spinner = ora('Copying WordPress files...').start();
-    
-    try {
-      await fs.copy(sourcePath, destinationPath, {
-        filter: src => !src.includes('.git') && 
-                !src.includes('node_modules') &&
-                !src.includes('.github')
-      });
-      spinner.succeed('WordPress files copied successfully');
-    } catch (error) {
-      spinner.fail('Failed to copy WordPress files');
-      if (error instanceof Error) {
-        throw new TypeError(`Failed to copy WordPress files: ${error.message}`);
-      }
-      
-      throw new TypeError('Failed to copy WordPress files');
-    }
-  }
-
-  /**
-   * Validates if a directory contains a WordPress installation
-   * @param directoryPath Path to check for WordPress files
-   * @returns Object with validation result and details
-   */
-  private async validateWordPressDirectory(directoryPath: string): Promise<{isValid: boolean; issues: string[]}> {
-    const issues: string[] = [];
-    
-    // Check for key WordPress files and directories
-    const requiredFiles = [
-      'wp-config.php',
-      'wp-content',
-      'wp-includes',
-      'wp-admin'
-    ];
-    
-    for (const file of requiredFiles) {
-      const filePath = join(directoryPath, file);
-      if (!fs.existsSync(filePath)) {
-        issues.push(`Missing WordPress component: ${file}`);
-      }
-    }
-    
-    // Additional checks could be added here
-    
-    return {
-      isValid: issues.length === 0,
-      issues
-    };
-  }
-
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Init);
     const { name } = args;
@@ -217,7 +108,7 @@ protected docker: DockerService;
       // Initialize Docker service with new project path
       this.docker = new DockerService(projectPath);
       
-      let wordpressSourcePath: string | null = null;
+      let wordpressSourcePath: null | string = null;
       
       // Handle --from-github flag
       if (flags['from-github']) {
@@ -231,14 +122,14 @@ protected docker: DockerService;
           if (!validation.isValid) {
             spinner.warn('Repository does not appear to contain a valid WordPress installation');
             console.log('Issues found:');
-            validation.issues.forEach(issue => console.log(` - ${issue}`));
+            for (const issue of validation.issues) console.log(` - ${issue}`);
             
             // Ask user if they want to continue anyway
             const { proceed } = await inquirer.prompt([{
-              type: 'confirm',
-              name: 'proceed',
+              default: false,
               message: 'Continue anyway?',
-              default: false
+              name: 'proceed',
+              type: 'confirm'
             }]);
             
             if (!proceed) {
@@ -252,6 +143,7 @@ protected docker: DockerService;
           if (error instanceof Error) {
             throw new TypeError(`GitHub repository error: ${error.message}`);
           }
+
           throw new TypeError('Failed to process GitHub repository');
         }
       }
@@ -266,14 +158,14 @@ protected docker: DockerService;
         if (!validation.isValid) {
           spinner.warn('Current directory does not appear to contain a valid WordPress installation');
           console.log('Issues found:');
-          validation.issues.forEach(issue => console.log(` - ${issue}`));
+          for (const issue of validation.issues) console.log(` - ${issue}`);
           
           // Ask user if they want to continue anyway
           const { proceed } = await inquirer.prompt([{
-            type: 'confirm',
-            name: 'proceed',
+            default: false,
             message: 'Continue anyway?',
-            default: false
+            name: 'proceed',
+            type: 'confirm'
           }]);
           
           if (!proceed) {
@@ -283,13 +175,6 @@ protected docker: DockerService;
         
         wordpressSourcePath = currentDir;
       }
-
-      // Use the ports from the configuration
-      const ports = {
-        wordpress: DEFAULT_PORTS.WORDPRESS,
-        phpmyadmin: DEFAULT_PORTS.PHPMYADMIN,
-        mysql: DEFAULT_PORTS.MYSQL
-      };
 
       // Use DockerService's checkPorts method to handle port conflicts
       await this.docker.checkPorts();
@@ -378,6 +263,155 @@ protected docker: DockerService;
       this.error('Failed to initialize project');
     }
   }
+  
+  /**
+   * Builds Docker images if necessary (especially for ARM architectures)
+   * @param projectPath Path to the project directory
+   */
+  private async buildDockerImages(projectPath: string): Promise<void> {
+    const spinner = ora('Building Docker images...').start();
+    const architecture = arch();
+    
+    try {
+      // Pull necessary images and build them with appropriate platform
+      if (architecture === 'arm64') {
+        // For M1/M2 Macs, we need to pull with platform specification for phpMyAdmin
+        await execa('docker', ['pull', '--platform=linux/amd64', 'phpmyadmin/phpmyadmin'], {
+          cwd: projectPath,
+        });
+        
+        // Pull MariaDB which has better ARM compatibility
+        await execa('docker', ['pull', 'mariadb:10.6'], {
+          cwd: projectPath,
+        });
+        
+        // Pull WordPress ARM image
+        await execa('docker', ['pull', 'arm64v8/wordpress:latest'], {
+          cwd: projectPath,
+        });
+        
+        spinner.succeed('Docker images pulled successfully for ARM64 architecture');
+        
+        // Log the process
+        console.log(chalk.blue('ℹ️ For ARM architecture:'));
+        console.log(chalk.blue('  - Pulled phpMyAdmin image with linux/amd64 platform specification'));
+        console.log(chalk.blue('  - Pulled MariaDB 10.6 for better ARM compatibility'));
+        console.log(chalk.blue('  - Pulled ARM-specific WordPress image'));
+        console.log(chalk.blue('  - This ensures compatibility with your system'));
+      } else {
+        // For Intel/AMD architectures, just pull the images
+        await execa('docker', ['pull', 'phpmyadmin/phpmyadmin'], {
+          cwd: projectPath,
+        });
+        
+        await execa('docker', ['pull', 'mysql:8.0'], {
+          cwd: projectPath,
+        });
+        
+        await execa('docker', ['pull', 'wordpress:latest'], {
+          cwd: projectPath,
+        });
+        
+        spinner.succeed('Docker images pulled successfully');
+      }
+    } catch {
+      spinner.warn('Docker image building/pulling encountered issues');
+      console.log(chalk.yellow('  - Will attempt to continue with Docker Compose'));
+    }
+  }
+
+  /**
+   * Checks the system platform and architecture
+   * Provides warnings or informational messages based on system architecture
+   */
+  private async checkSystem(): Promise<void> {
+    const spinner = ora('Checking system platform...').start();
+    const platformType = process.platform;
+    const architecture = arch();
+    
+    spinner.succeed(`Detected platform: ${platformType} (${architecture})`);
+    
+    // Warn about potential issues based on platform/architecture
+    if (architecture === 'arm64') {
+      console.log(chalk.yellow('ℹ️ ARM64 architecture detected'));
+      console.log(chalk.yellow('  - Some Docker images may require platform specification'));
+      console.log(chalk.yellow('  - phpMyAdmin will use linux/amd64 platform for compatibility'));
+    }
+    
+    switch (platformType) {
+    case 'darwin': {
+      // macOS-specific checks
+      console.log(chalk.blue('ℹ️ macOS detected'));
+      console.log(chalk.blue('  - Using Docker Desktop for macOS'));
+    
+    break;
+    }
+
+    case 'linux': {
+      console.log(chalk.blue('ℹ️ Linux detected'));
+    
+    break;
+    }
+
+    case 'win32': {
+      console.log(chalk.blue('ℹ️ Windows detected'));
+      console.log(chalk.blue('  - Using Docker Desktop for Windows'));
+      console.log(chalk.yellow('  - Path mapping may differ from Unix-based systems'));
+    
+    break;
+    }
+    // No default
+    }
+  }
+
+  /**
+   * Clones a GitHub repository to a temporary directory
+   * @param repoUrl GitHub repository URL
+   * @returns Path to the cloned repository
+   */
+  private async cloneGitHubRepo(repoUrl: string): Promise<string> {
+    const spinner = ora('Cloning GitHub repository...').start();
+    const tempDir = join(tmpdir(), `wp-spin-${Date.now()}`);
+    
+    try {
+      await fs.ensureDir(tempDir);
+      await execa('git', ['clone', repoUrl, tempDir, '--depth', '1']);
+      spinner.succeed('Repository cloned successfully');
+      return tempDir;
+    } catch (error) {
+      spinner.fail('Failed to clone repository');
+      if (error instanceof Error) {
+        throw new TypeError(`Failed to clone repository: ${error.message}`);
+      }
+      
+      throw new TypeError('Failed to clone repository');
+    }
+  }
+
+  /**
+   * Copies WordPress files from source to destination
+   * @param sourcePath Source directory with WordPress files
+   * @param destinationPath Destination directory
+   */
+  private async copyWordPressFiles(sourcePath: string, destinationPath: string): Promise<void> {
+    const spinner = ora('Copying WordPress files...').start();
+    
+    try {
+      await fs.copy(sourcePath, destinationPath, {
+        filter: src => !src.includes('.git') && 
+                !src.includes('node_modules') &&
+                !src.includes('.github')
+      });
+      spinner.succeed('WordPress files copied successfully');
+    } catch (error) {
+      spinner.fail('Failed to copy WordPress files');
+      if (error instanceof Error) {
+        throw new TypeError(`Failed to copy WordPress files: ${error.message}`);
+      }
+      
+      throw new TypeError('Failed to copy WordPress files');
+    }
+  }
 
   private async createDockerComposeFile(projectPath: string): Promise<void> {
     // Get the default ports from our configuration
@@ -419,7 +453,7 @@ protected docker: DockerService;
           
           server.listen(Number(phpmyadminPort)); // Convert to number for the server
         });
-      } catch (_error) {
+      } catch {
         // If there's any error, just increment to be safe
         phpmyadminPort = (Number(phpmyadminPort) + 1) as typeof DEFAULT_PORTS.PHPMYADMIN;
       }
@@ -659,66 +693,38 @@ FLUSH PRIVILEGES;
     await fs.chmod(join(mysqlDir, 'init.sql'), 0o600);
   }
 
-  // Add this property to the class to store the MySQL init script path
-  private mysqlInitScriptPath: string = '';
-
   private generateSecurePassword(length: number = 32): string {
     return crypto.randomBytes(length).toString('hex');
   }
 
   /**
-   * Builds Docker images if necessary (especially for ARM architectures)
-   * @param projectPath Path to the project directory
+   * Validates if a directory contains a WordPress installation
+   * @param directoryPath Path to check for WordPress files
+   * @returns Object with validation result and details
    */
-  private async buildDockerImages(projectPath: string): Promise<void> {
-    const spinner = ora('Building Docker images...').start();
-    const architecture = arch();
+  private async validateWordPressDirectory(directoryPath: string): Promise<{issues: string[]; isValid: boolean;}> {
+    const issues: string[] = [];
     
-    try {
-      // Pull necessary images and build them with appropriate platform
-      if (architecture === 'arm64') {
-        // For M1/M2 Macs, we need to pull with platform specification for phpMyAdmin
-        await execa('docker', ['pull', '--platform=linux/amd64', 'phpmyadmin/phpmyadmin'], {
-          cwd: projectPath,
-        });
-        
-        // Pull MariaDB which has better ARM compatibility
-        await execa('docker', ['pull', 'mariadb:10.6'], {
-          cwd: projectPath,
-        });
-        
-        // Pull WordPress ARM image
-        await execa('docker', ['pull', 'arm64v8/wordpress:latest'], {
-          cwd: projectPath,
-        });
-        
-        spinner.succeed('Docker images pulled successfully for ARM64 architecture');
-        
-        // Log the process
-        console.log(chalk.blue('ℹ️ For ARM architecture:'));
-        console.log(chalk.blue('  - Pulled phpMyAdmin image with linux/amd64 platform specification'));
-        console.log(chalk.blue('  - Pulled MariaDB 10.6 for better ARM compatibility'));
-        console.log(chalk.blue('  - Pulled ARM-specific WordPress image'));
-        console.log(chalk.blue('  - This ensures compatibility with your system'));
-      } else {
-        // For Intel/AMD architectures, just pull the images
-        await execa('docker', ['pull', 'phpmyadmin/phpmyadmin'], {
-          cwd: projectPath,
-        });
-        
-        await execa('docker', ['pull', 'mysql:8.0'], {
-          cwd: projectPath,
-        });
-        
-        await execa('docker', ['pull', 'wordpress:latest'], {
-          cwd: projectPath,
-        });
-        
-        spinner.succeed('Docker images pulled successfully');
+    // Check for key WordPress files and directories
+    const requiredFiles = [
+      'wp-config.php',
+      'wp-content',
+      'wp-includes',
+      'wp-admin'
+    ];
+    
+    for (const file of requiredFiles) {
+      const filePath = join(directoryPath, file);
+      if (!fs.existsSync(filePath)) {
+        issues.push(`Missing WordPress component: ${file}`);
       }
-    } catch (error) {
-      spinner.warn('Docker image building/pulling encountered issues');
-      console.log(chalk.yellow('  - Will attempt to continue with Docker Compose'));
     }
+    
+    // Additional checks could be added here
+    
+    return {
+      issues,
+      isValid: issues.length === 0
+    };
   }
 }

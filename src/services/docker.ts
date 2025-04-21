@@ -2,18 +2,14 @@ import { Command } from '@oclif/core';
 import boxen from 'boxen';
 import chalk from 'chalk';
 import { execa } from 'execa';
-import { constants } from 'node:fs';
-import type { Stats } from 'node:fs';
+import inquirer from 'inquirer';
 import * as fs from 'node:fs/promises';
 import * as net from 'node:net';
-import * as path from 'node:path';
-import inquirer from 'inquirer';
-import { access, chmod, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { arch, platform } from 'node:os';
 import { join } from 'node:path';
 import ora from 'ora';
 
-import { DEFAULT_PORTS } from '../config/ports.js';
+import { DEFAULT_PORTS, PortType } from '../config/ports.js';
 import { IDockerService } from './docker-interface.js';
 
 export class DockerService implements IDockerService {
@@ -173,7 +169,10 @@ export class DockerService implements IDockerService {
         portConflicts.set(port, !available);
         
         // If port is not available, find next available port immediately
-        if (!available) {
+        if (available) {
+          // If the port is available, mark it as used so we don't assign it elsewhere
+          usedPorts.add(port);
+        } else {
           // eslint-disable-next-line no-await-in-loop
           let nextPort = await this.findNextAvailablePort(port, usedPorts);
           // Keep searching until we find a port that's not already assigned
@@ -190,9 +189,6 @@ export class DockerService implements IDockerService {
           await this.updateDockerComposePorts(port, nextPort);
           portsChanged = true;
           console.log(chalk.yellow(`Port ${port} is in use, using port ${nextPort} instead`));
-        } else {
-          // If the port is available, mark it as used so we don't assign it elsewhere
-          usedPorts.add(port);
         }
       } catch (error) {
         this.spinner.warn(`Error checking port ${port}: ${error instanceof Error ? error.message : String(error)}`);
@@ -249,7 +245,7 @@ export class DockerService implements IDockerService {
                   const lines = netstatOutput.split('\n').filter(Boolean);
                   if (lines.length > 0) {
                     const parts = lines[0].trim().split(/\s+/);
-                    const pid = parts[parts.length - 1];
+                    const pid = parts.at(-1);
                     processInfo = `Process with PID: ${pid}`;
                   }
                 }
@@ -261,7 +257,7 @@ export class DockerService implements IDockerService {
           }
           
           // In non-test environment, prompt user for action
-          let action: 'next' | 'stop' | 'cancel' = 'next';
+          let action: 'cancel' | 'next' | 'stop' = 'next';
           
           try {
             // Ask user what to do about the port conflict
@@ -337,6 +333,7 @@ export class DockerService implements IDockerService {
                 await this.updateDockerComposePorts(port, nextPort);
                 portsChanged = true;
               }
+
               break;
             }
   
@@ -368,11 +365,23 @@ export class DockerService implements IDockerService {
   async checkProjectExists(): Promise<boolean> {
     const dockerComposePath = join(this.projectPath, 'docker-compose.yml');
     try {
-      await readFile(dockerComposePath);
+      await fs.readFile(dockerComposePath);
       return true;
     } catch {
       return false;
     }
+  }
+
+  public getPortMappings(): Record<number, number> {
+    return { ...this.portMappings };
+  }
+
+  /**
+   * Returns the current project path
+   * @returns The absolute path to the project root directory
+   */
+  public getProjectPath(): string {
+    return this.projectPath;
   }
 
   async logs(): Promise<void> {
@@ -513,11 +522,33 @@ export class DockerService implements IDockerService {
     }
   }
 
+  public async updateDockerComposePorts(originalPort: number, newPort: number): Promise<void> {
+    try {
+      const dockerComposeFile = join(this.projectPath, 'docker-compose.yml');
+      
+      // First record port mapping regardless of file existence
+      this.portMappings[originalPort] = newPort;
+      
+      // If the file exists, update it
+      try {
+        const content = await fs.readFile(dockerComposeFile, 'utf8');
+        const updatedContent = content.replaceAll(`${originalPort}:`, `${newPort}:`);
+        await fs.writeFile(dockerComposeFile, updatedContent);
+      } catch {
+        // Just log that we're storing the mapping for later use
+        console.log(chalk.blue(`Port mapping stored: ${originalPort} -> ${newPort}`));
+      }
+    } catch (error) {
+      console.error(`Failed to update Docker Compose ports: ${error}`);
+      throw error;
+    }
+  }
+
   private async createDockerCompose(): Promise<void> {
     const dockerComposePath = join(this.projectPath, 'docker-compose.yml');
     const wordpressPath = './wordpress'; // Use relative path
     const images = this.getPlatformSpecificImages();
-    const isArm = this.architecture === 'arm64';
+    // ARM detection
     
     // Get WordPress port (use mapping if available or default)
     const wordpressPort = this.portMappings[DEFAULT_PORTS.WORDPRESS] || DEFAULT_PORTS.WORDPRESS;
@@ -526,7 +557,7 @@ export class DockerService implements IDockerService {
     const phpmyadminPort = this.portMappings[DEFAULT_PORTS.PHPMYADMIN] || DEFAULT_PORTS.PHPMYADMIN;
     
     // Get MySQL port (use mapping if available or default)
-    const mysqlPort = this.portMappings[DEFAULT_PORTS.MYSQL] || DEFAULT_PORTS.MYSQL;
+    // Using MySQL port mapping
     
     const compose = {
       services: {
@@ -597,15 +628,15 @@ export class DockerService implements IDockerService {
     
     try {
       // Create directory if it doesn't exist
-      await mkdir(wordpressPath, { recursive: true });
+      await fs.mkdir(wordpressPath, { recursive: true });
       
       // Set directory permissions to 755 (rwxr-xr-x)
-      await chmod(wordpressPath, 0o755);
+      await fs.chmod(wordpressPath, 0o755);
       
       // Create a test file to verify write permissions
       const testFile = join(wordpressPath, '.test');
-      await writeFile(testFile, 'test');
-      await unlink(testFile);
+      await fs.writeFile(testFile, 'test');
+      await fs.unlink(testFile);
       
       this.spinner.succeed('WordPress directory verified');
     } catch (error) {
@@ -740,28 +771,6 @@ export class DockerService implements IDockerService {
     await fs.writeFile(dockerComposePath, content);
   }
 
-  public async updateDockerComposePorts(originalPort: number, newPort: number): Promise<void> {
-    try {
-      const dockerComposeFile = join(this.projectPath, 'docker-compose.yml');
-      
-      // First record port mapping regardless of file existence
-      this.portMappings[originalPort] = newPort;
-      
-      // If the file exists, update it
-      try {
-        const content = await fs.readFile(dockerComposeFile, 'utf8');
-        const updatedContent = content.replaceAll(`${originalPort}:`, `${newPort}:`);
-        await fs.writeFile(dockerComposeFile, updatedContent);
-      } catch {
-        // Just log that we're storing the mapping for later use
-        console.log(chalk.blue(`Port mapping stored: ${originalPort} -> ${newPort}`));
-      }
-    } catch (error) {
-      console.error(`Failed to update Docker Compose ports: ${error}`);
-      throw error;
-    }
-  }
-
   private async waitForMySQL(): Promise<void> {
     this.spinner.start('Waiting for MySQL to be ready...');
     let attempts = 0;
@@ -769,7 +778,7 @@ export class DockerService implements IDockerService {
     
     // Get the project name for the MySQL container
     const projectName = this.projectPath.split('/').pop() || 'wp-spin';
-    const mysqlContainer = `${projectName}_mysql`;
+    // MySQL container name
     
     // Use a loop with explicit eslint disable for waiting
     while (attempts < maxAttempts) {
@@ -796,17 +805,5 @@ export class DockerService implements IDockerService {
       'MySQL failed to start within the expected time.',
       'Please check your Docker configuration and try again.'
     );
-  }
-
-  public getPortMappings(): Record<number, number> {
-    return { ...this.portMappings };
-  }
-
-  /**
-   * Returns the current project path
-   * @returns The absolute path to the project root directory
-   */
-  public getProjectPath(): string {
-    return this.projectPath;
   }
 } 

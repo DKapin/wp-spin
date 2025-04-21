@@ -106,6 +106,14 @@ private spinner = ora();
     return this.projectExists;
   }
 
+  getPortMappings(): Record<number, number> {
+    return { ...this.portMappings };
+  }
+
+  getProjectPath(): string {
+    return this.projectPath;
+  }
+
   async logs(): Promise<void> {
     if (!this.isRunning) {
       throw new Error('Docker is not running');
@@ -176,14 +184,6 @@ private spinner = ora();
     this.isRunning = false;
     this.spinner.succeed('WordPress environment stopped');
     
-  }
-
-  getPortMappings(): Record<number, number> {
-    return { ...this.portMappings };
-  }
-
-  getProjectPath(): string {
-    return this.projectPath;
   }
 
   async updateDockerComposePorts(originalPort: number, newPort: number): Promise<void> {

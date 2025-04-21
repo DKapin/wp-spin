@@ -1,7 +1,7 @@
 import { expect } from 'chai';
-import * as fs from 'fs-extra';
-import * as path from 'path';
 import { execa } from 'execa';
+import * as fs from 'fs-extra';
+import * as path from 'node:path';
 import * as sinon from 'sinon';
 
 import Init from '../../src/commands/init.js';
@@ -44,7 +44,7 @@ describe('init command extensions', () => {
     // Stub the execa function for git clone
     execaStub = sinon.stub();
     sinon.stub(execa, 'execa').returns(execaStub as any);
-    execaStub.resolves({ stdout: '', stderr: '' });
+    execaStub.resolves({ stderr: '', stdout: '' });
     
     // Stub inquirer for user prompts
     inquirerStub = sinon.stub().resolves({ proceed: true });

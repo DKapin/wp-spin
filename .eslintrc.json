@@ -1,0 +1,24 @@
+{
+  "extends": ["eslint-config-oclif", "eslint-config-prettier"],
+  "rules": {
+    "complexity": ["warn", { "max": 35 }],
+    "max-depth": ["warn", { "max": 8 }],
+    "no-await-in-loop": "warn",
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-unused-vars": "warn",
+    "@typescript-eslint/no-require-imports": "warn",
+    "unicorn/prefer-switch": "warn",
+    "unicorn/no-array-for-each": "warn",
+    "unicorn/no-negated-condition": "warn",
+    "unicorn/import-style": "warn",
+    "unicorn/prefer-module": "warn",
+    "no-undef": "warn",
+    "no-lonely-if": "warn",
+    "perfectionist/sort-imports": "off",
+    "perfectionist/sort-classes": "off",
+    "perfectionist/sort-objects": "off",
+    "perfectionist/sort-union-types": "off",
+    "perfectionist/sort-object-types": "off",
+    "import/no-named-as-default-member": "warn"
+  }
+} 

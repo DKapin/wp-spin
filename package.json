@@ -95,7 +95,7 @@
   },
   "scripts": {
     "clean": "shx rm -rf dist oclif.manifest.json",
-    "build": "npm run clean && npx tsc --build --force",
+    "build": "npm run clean && npx tsc --build --force && npm run manifest",
     "manifest": "oclif manifest",
     "readme": "oclif readme",
     "lint": "eslint",

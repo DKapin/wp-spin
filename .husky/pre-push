@@ -9,4 +9,4 @@ done
 
 echo "🚀 Running pre-push checks..."
 echo "Running tests and build verification before pushing..."
-cd "$(git rev-parse --show-toplevel)" && npm run build && npm run manifest && npm run test 
+cd "$(git rev-parse --show-toplevel)" && npm run build && npm run test 
