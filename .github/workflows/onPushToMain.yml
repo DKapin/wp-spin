@@ -8,6 +8,8 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,18 +34,22 @@ jobs:
       - name: Setup git
         if: ${{ steps.version-check.outputs.skipped == 'false' }}
         run: |
-          git config --global user.email ${{ secrets.GH_EMAIL }}
-          git config --global user.name ${{ secrets.GH_USERNAME }}
+          git config --global user.email "${{ secrets.GH_EMAIL }}"
+          git config --global user.name "${{ secrets.GH_USERNAME }}"
       - name: Generate oclif README
         if: ${{ steps.version-check.outputs.skipped == 'false' }}
         id: oclif-readme
         run: |
+          npm run build
           npm install
           npm exec oclif readme
-          if [ -n "$(git status --porcelain)" ]; then
-            git add .
-            git commit -am "chore: update README.md"
-            git push -u origin ${{ github.ref_name }}
+          if [ -n "$(git status --porcelain README.md)" ]; then
+            echo "README changed, committing and pushing..."
+            git add README.md
+            git commit -m "chore: update README.md [skip ci]"
+            git push
+          else
+            echo "README unchanged."
           fi
       - name: Create Github Release
         uses: ncipollo/release-action@2c591bcc8ecdcd2db72b97d6147f871fcd833ba5
