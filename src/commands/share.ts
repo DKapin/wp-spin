@@ -12,6 +12,7 @@ import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import ora from 'ora';
 import inquirer from 'inquirer';
+import path from 'node:path';
 
 import { BaseCommand } from './base.js';
 
@@ -177,50 +178,49 @@ export default class Share extends BaseCommand {
   /**
    * Validates the project context and Docker environment
    */
-  private async validateProjectContext(flags: ShareFlags, spinner: ReturnType<typeof ora>): Promise<string | undefined> {
-    // Find the project root directory (unless forced)
-    if (!flags.force) {
-      const projectRoot = this.findProjectRoot();
-      
-      if (!projectRoot) {
-        this.error('No WordPress project found in this directory or any parent directory. Make sure you are inside a wp-spin project or use --force flag.');
-      }
+  private async validateProjectContext(flags: ShareFlags, spinner: ReturnType<typeof ora>): Promise<string> {
+    // BaseCommand.init() already resolved the path and initialized this.docker
+    // If --force is used, init() might not have a valid path, but we proceed anyway.
+    const projectPath = flags.force ? process.cwd() : this.docker.getProjectPath(); 
+    const isProjectValid = flags.force || (this.docker && await this.docker.checkProjectExists());
+
+    if (!isProjectValid) {
+       // This error should ideally be caught during BaseCommand.init unless --force is used.
+       this.error('Could not find a valid wp-spin project. Run `wp-spin init` or specify a valid path with --site.');
     }
     
-    // Check if Docker is running
+    // Check if Docker is running (this check is general, not project-specific)
     await this.checkDockerEnvironment();
     
-    // Check if WordPress container is running (unless forced)
+    // Check if WordPress container is running for the specific project (unless forced)
+    let wordpressContainerName = '';
     if (!flags.force) {
+      spinner.start(`Checking WordPress environment at ${projectPath}...`);
       try {
-        spinner.start('Checking WordPress environment...');
-        const { stdout } = await execa('docker', ['ps', '--format', '{{.Names}} {{.Ports}}']);
+        // Use docker-compose ps to check status within the project context
+        const { stdout } = await execa('docker-compose', ['-f', `${projectPath}/docker-compose.yml`, 'ps', '--services', '--filter', 'status=running'], {
+             cwd: projectPath // Important: Run docker-compose in the project directory
+        });
         
-        if (!stdout.includes('wordpress')) {
+        const runningServices = stdout.split('\n').filter(s => s.trim() === 'wordpress');
+
+        if (runningServices.length === 0) {
           spinner.fail('WordPress container is not running');
-          this.error('WordPress container is not running. Please start your Docker environment first with `wp-spin start`.');
+          this.error('WordPress container for this site is not running. Please start it first with `wp-spin start --site=...`.');
         }
         
-        spinner.succeed('WordPress environment is running');
-        
-        // Find WordPress container name
-        try {
-          const { stdout } = await execa('docker', ['ps', '--format', '{{.Names}}']);
-          const containerNames = stdout.split('\n');
-          const found = containerNames.find(name => name.includes('wordpress'));
-          if (found) {
-            return found;
-          }
-        } catch {
-          // Continue even if we can't find the container
-        }
+        // Get the specific container name using BaseCommand helper
+        wordpressContainerName = this.getContainerNames().wordpress;
+        spinner.succeed(`WordPress environment is running (Container: ${wordpressContainerName})`);
+
       } catch (error) {
-        spinner.fail('Failed to check Docker containers');
+        spinner.fail('Failed to check Docker containers for this site');
         this.error(`Failed to check Docker containers: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     
-    return undefined;
+    // Return the determined container name (might be empty if --force)
+    return wordpressContainerName;
   }
 
   /**
@@ -298,12 +298,19 @@ export default class Share extends BaseCommand {
       
       let urlCheckInterval: NodeJS.Timeout | undefined;
       let foundUrl = false;
-      let wordpressContainer = '';
       let originalConfigBackup = false;
       
-      // Find WordPress container name if not forced
+      // Get WordPress container name from validateProjectContext (unless forced)
+      let wordpressContainer = '';
       if (!flags.force) {
-        wordpressContainer = await this.findWordPressContainer() || '';
+        // We already validated and got the name, just retrieve it from the validated context
+        // Note: validateProjectContext is called earlier in run()
+        wordpressContainer = this.getContainerNames().wordpress;
+        if (!wordpressContainer) {
+          // This should not happen if validateProjectContext succeeded
+          spinner.fail('Could not determine WordPress container name.');
+          this.error('Internal error: Failed to determine WordPress container name after validation.');
+        }
       }
       
       // Run ngrok as a child process
@@ -383,6 +390,44 @@ export default class Share extends BaseCommand {
   }
 
   /**
+   * Processes a detected ngrok URL, fixes WordPress URL, and calls callbacks.
+   */
+  private async _processNgrokUrl(
+    url: string,
+    flags: ShareFlags, 
+    spinner: ReturnType<typeof ora>,
+    port: number,
+    wordpressContainer: string,
+    onUrlFound: (url: string, backupCreated: boolean) => void,
+    onComplete: () => void
+  ): Promise<void> {
+    let backupCreated = false;
+    try {
+      if (flags.fixurl && wordpressContainer) {
+        backupCreated = await this.fixWordPressUrl(wordpressContainer, url, spinner, flags.method);
+        onUrlFound(url, backupCreated);
+        this.displaySuccessMessage(url, port, spinner);
+      } else {
+        onUrlFound(url, false);
+        this.displaySuccessMessage(url, port, spinner);
+        if (!flags.fixurl && wordpressContainer) {
+          console.log('\n⚠️  NOTE: WordPress URLs have not been updated to work with ngrok.');
+          console.log('   If links don\'t work, try:');
+          console.log(chalk.blue('   wp-spin share --fixurl'));
+        }
+      }
+    } catch (error) {
+      onUrlFound(url, false);
+      this.displaySuccessMessage(url, port, spinner, true); // Show manual instructions on error
+      if (flags.debug) {
+        console.error('Error during _processNgrokUrl:', error);
+      }
+    } finally {
+      onComplete();
+    }
+  }
+
+  /**
    * Handle ngrok process output to detect URLs
    */
   private async handleNgrokOutput(
@@ -395,7 +440,7 @@ export default class Share extends BaseCommand {
     onComplete: () => void
   ): Promise<void> {
     // Listen for ngrok output
-    ngrokProcess.stdout?.on('data', (data: Buffer) => {
+    ngrokProcess.stdout?.on('data', async (data: Buffer) => {
       const output = data.toString();
       
       if (flags.debug) {
@@ -413,34 +458,9 @@ export default class Share extends BaseCommand {
         const match = output.match(pattern);
         if (match && match[1]) {
           const url = `https://${match[1]}`;
-          
-          // Fix WordPress URLs if requested
-          if (flags.fixurl && wordpressContainer) {
-            this.fixWordPressUrl(wordpressContainer, url, spinner, flags.method)
-              .then((backupCreated) => {
-                onUrlFound(url, backupCreated);
-                this.displaySuccessMessage(url, port, spinner);
-                onComplete();
-              })
-              .catch(() => {
-                onUrlFound(url, false);
-                this.displaySuccessMessage(url, port, spinner, true);
-                onComplete();
-              });
-          } else {
-            onUrlFound(url, false);
-            this.displaySuccessMessage(url, port, spinner);
-            
-            if (!flags.fixurl && wordpressContainer) {
-              console.log('\n⚠️  NOTE: WordPress URLs have not been updated to work with ngrok.');
-              console.log('   If links don\'t work, try:');
-              console.log(chalk.blue('   wp-spin share --fixurl'));
-            }
-            
-            onComplete();
-          }
-          
-          break;
+          // Call the new helper method
+          await this._processNgrokUrl(url, flags, spinner, port, wordpressContainer, onUrlFound, onComplete);
+          break; // Exit loop once URL is processed
         }
       }
     });
@@ -489,66 +509,33 @@ export default class Share extends BaseCommand {
     onComplete: () => void
   ): NodeJS.Timeout {
     return setInterval(async () => {
-      if (!foundUrl) {
-        try {
-          const { stdout } = await execa('curl', ['-s', 'http://localhost:4040/api/tunnels']);
-          const tunnels = JSON.parse(stdout);
-          if (tunnels?.tunnels?.length > 0) {
-            for (const tunnel of tunnels.tunnels) {
-              if (tunnel.public_url && tunnel.public_url.startsWith('https://')) {
-                const url = tunnel.public_url;
-                
-                // Fix WordPress URLs if requested
-                if (flags.fixurl && wordpressContainer) {
-                  this.fixWordPressUrl(wordpressContainer, url, spinner, flags.method)
-                    .then((backupCreated) => {
-                      onUrlFound(url, backupCreated);
-                      this.displaySuccessMessage(url, port, spinner);
-                      onComplete();
-                    })
-                    .catch(() => {
-                      onUrlFound(url, false);
-                      this.displaySuccessMessage(url, port, spinner, true);
-                      onComplete();
-                    });
-                } else {
-                  onUrlFound(url, false);
-                  this.displaySuccessMessage(url, port, spinner);
-                  
-                  if (!flags.fixurl && wordpressContainer) {
-                    console.log('\n⚠️  NOTE: WordPress URLs have not been updated to work with ngrok.');
-                    console.log('   If links don\'t work, try:');
-                    console.log(chalk.blue('   wp-spin share --fixurl'));
-                  }
-                  
-                  onComplete();
-                }
-                
-                break;
-              }
-            }
-          }
-        } catch {
-          // API might not be ready yet, continue trying
-          if (flags.debug) {
-            console.log('Waiting for ngrok API to be ready...');
+      if (foundUrl) return; // Skip if URL already found
+
+      let tunnelUrl: string | null = null;
+      try {
+        const { stdout } = await execa('curl', ['-s', 'http://localhost:4040/api/tunnels']);
+        const tunnels = JSON.parse(stdout);
+        if (tunnels?.tunnels?.length > 0) {
+          // Find the first https tunnel URL
+          const foundTunnel = tunnels.tunnels.find((tunnel: any) => 
+            tunnel.public_url && tunnel.public_url.startsWith('https://')
+          );
+          if (foundTunnel) {
+            tunnelUrl = foundTunnel.public_url;
           }
         }
+      } catch {
+        // API might not be ready yet, continue trying
+        if (flags.debug) {
+          console.log('Waiting for ngrok API to be ready...');
+        }
+      }
+
+      // If a URL was found in this interval, process it
+      if (tunnelUrl) {
+         await this._processNgrokUrl(tunnelUrl, flags, spinner, port, wordpressContainer, onUrlFound, onComplete);
       }
     }, 1000);
-  }
-
-  /**
-   * Find the WordPress container name
-   */
-  private async findWordPressContainer(): Promise<string | undefined> {
-    try {
-      const { stdout } = await execa('docker', ['ps', '--format', '{{.Names}}']);
-      const containerNames = stdout.split('\n');
-      return containerNames.find(name => name.includes('wordpress'));
-    } catch {
-      return undefined;
-    }
   }
 
   /**
@@ -638,7 +625,7 @@ export default class Share extends BaseCommand {
    * Update WordPress wp-config.php to define WP_HOME and WP_SITEURL constants
    */
   private async fixWordPressConfig(
-    container: string,
+    containerName: string,
     ngrokUrl: string,
     spinner: ReturnType<typeof ora>
   ): Promise<boolean> {
@@ -649,9 +636,8 @@ export default class Share extends BaseCommand {
       
       if (DEBUG) console.log('Starting fixWordPressConfig method...');
       
-      // Find the wp-config.php file
-      console.log('finding wp-config.php file');
-      const wpConfigPath = await this.findWpConfigPath(container, DEBUG);
+      // Find the wp-config.php file using the correct project path
+      const wpConfigPath = await this.findWpConfigPath(containerName, DEBUG);
       
       if (!wpConfigPath) {
         this.showManualConfigInstructions(spinner);
@@ -700,67 +686,31 @@ export default class Share extends BaseCommand {
   /**
    * Find the wp-config.php file path
    */
-  private async findWpConfigPath(container: string, DEBUG = false): Promise<string | null> {
-    let wpConfigPath = '';
-    
-    // Strategy 1: Project root
-    const projectRoot = this.findProjectRoot();
-    if (DEBUG) console.log(`Project root: ${projectRoot || 'not found'}`);
-    
-    if (projectRoot) {
-      const configPath = `${projectRoot}/wordpress/wp-config.php`;
-      if (DEBUG) console.log(`Checking for wp-config.php at: ${configPath}`);
-      if (fs.existsSync(configPath)) {
-        wpConfigPath = configPath;
-        if (DEBUG) console.log(`Found wp-config.php using Strategy 1!`);
-      }
+  private async findWpConfigPath(containerName: string, DEBUG = false): Promise<string | null> {
+    // Get project path from the docker service instance
+    const projectPath = this.docker?.getProjectPath();
+    if (DEBUG) console.log(`findWpConfigPath - projectPath: ${projectPath}`);
+
+    if (!projectPath) {
+        if (DEBUG) console.log('Project path not found via DockerService.');
+        // Potentially add other fallback strategies here if needed when --force is used?
+        // For now, return null if we don't have a project path from the service.
+        return null;
     }
-    
-    // Strategy 2: Docker volume path (only works with local volumes)
-    if (!wpConfigPath) {
-      if (DEBUG) console.log('Trying Strategy 2: Docker volume path...');
-      try {
-        const { stdout: inspectOutput } = await execa('docker', [
-          'inspect',
-          '--format',
-          '{{range .Mounts}}{{if eq .Destination "/var/www/html"}}{{.Source}}{{end}}{{end}}',
-          container
-        ]);
-        
-        if (DEBUG) console.log(`Docker volume path: ${inspectOutput.trim() || 'not found'}`);
-        
-        if (inspectOutput && inspectOutput.trim()) {
-          const volPath = `${inspectOutput.trim()}/wp-config.php`;
-          if (DEBUG) console.log(`Checking for wp-config.php at: ${volPath}`);
-          if (fs.existsSync(volPath)) {
-            wpConfigPath = volPath;
-            if (DEBUG) console.log(`Found wp-config.php using Strategy 2!`);
-          }
-        }
-      } catch (error) {
-        // Continue with other strategies
-        if (DEBUG) console.log(`Strategy 2 failed: ${error}`);
-      }
+
+    // Strategy 1: Check within the resolved project path
+    const configPath = path.join(projectPath, 'wordpress', 'wp-config.php');
+    if (DEBUG) console.log(`Checking for wp-config.php at: ${configPath}`);
+    if (fs.existsSync(configPath)) {
+      if (DEBUG) console.log('Found wp-config.php using Strategy 1 (Project Path).');
+      return configPath;
     }
-    
-    // Strategy 3: Look for specific paths if forced (your specific setup)
-    if (!wpConfigPath) {
-      if (DEBUG) console.log('Trying Strategy 3: Specific paths...');
-      const possiblePaths = [
-        '/Users/danielkapin/Projects/test-site/test-site/wordpress/wp-config.php'
-      ];
-      
-      for (const path of possiblePaths) {
-        if (DEBUG) console.log(`Checking for wp-config.php at: ${path}`);
-        if (fs.existsSync(path)) {
-          wpConfigPath = path;
-          if (DEBUG) console.log(`Found wp-config.php using Strategy 3!`);
-          break;
-        }
-      }
-    }
-    
-    return wpConfigPath || null;
+
+    // Remove Strategy 2 (docker inspect) as it's complex and less reliable than using projectPath
+    // Remove Strategy 3 (hardcoded paths)
+
+    if (DEBUG) console.log('wp-config.php not found in project path.');
+    return null;
   }
 
   /**
@@ -882,13 +832,17 @@ if (isset($_SERVER['HTTP_HOST'])) {
    * Update WordPress options in database (fallback method)
    */
   private async fixWordPressOptions(
-    container: string,
+    containerName: string,
     ngrokUrl: string,
     spinner: ReturnType<typeof ora>
   ): Promise<void> {
     spinner.start('Updating WordPress database options for ngrok compatibility...');
     
     try {
+      // Get the correct container name from BaseCommand
+      // const actualContainerName = this.getContainerNames().wordpress;
+      // NOTE: The containerName passed in should already be the correct one from validateProjectContext
+
       // Create a wp-cli script to update options
       const script = `
 #!/bin/bash
@@ -900,7 +854,7 @@ wp option update siteurl '${ngrokUrl}' --allow-root
       // Write script to container
       await execa('docker', [
         'exec',
-        container,
+        containerName,
         'bash',
         '-c',
         `echo "${script}" > /tmp/update-wp-options.sh && chmod +x /tmp/update-wp-options.sh`
@@ -909,7 +863,7 @@ wp option update siteurl '${ngrokUrl}' --allow-root
       // Run the script
       await execa('docker', [
         'exec',
-        container,
+        containerName,
         '/tmp/update-wp-options.sh'
       ]);
       
@@ -924,7 +878,7 @@ wp option update siteurl '${ngrokUrl}' --allow-root
    * Fix WordPress URL to work with ngrok
    */
   private async fixWordPressUrl(
-    container: string,
+    containerName: string,
     ngrokUrl: string,
     spinner: ReturnType<typeof ora>,
     method = 'config'
@@ -932,7 +886,7 @@ wp option update siteurl '${ngrokUrl}' --allow-root
     try {
       // Always attempt to update database options first
       try {
-        await this.fixWordPressOptions(container, ngrokUrl, spinner);
+        await this.fixWordPressOptions(containerName, ngrokUrl, spinner);
       } catch {
         spinner.warn('Could not update WordPress database options');
         // Continue with config file if database failed
@@ -941,7 +895,7 @@ wp option update siteurl '${ngrokUrl}' --allow-root
       // Then update the config as well (if method is config or if database update failed)
       if (method === 'config') {
         console.log('fixing wordpress config');
-        return this.fixWordPressConfig(container, ngrokUrl, spinner);
+        return this.fixWordPressConfig(containerName, ngrokUrl, spinner);
       }
       
       return false;
@@ -955,25 +909,38 @@ wp option update siteurl '${ngrokUrl}' --allow-root
    * Get the actual WordPress port from Docker
    */
   private async getWordPressPort(defaultPort: number): Promise<number> {
+    const projectPath = this.docker?.getProjectPath(); // Get project path from docker service
+    if (!projectPath) {
+      // If no project path (e.g., --force used), return the default/provided port
+      return defaultPort;
+    }
+
     try {
-      // Try to determine the actual port mapping from Docker
-      const { stdout } = await execa('docker', ['ps', '--format', '{{.Names}} {{.Ports}}']);
-      const lines = stdout.split('\n');
+      // Use docker-compose ps to get the port for the specific project
+      const { stdout } = await execa('docker-compose', ['-f', `${projectPath}/docker-compose.yml`, 'ps', 'wordpress'], {
+        cwd: projectPath // Run in project directory
+      });
       
+      // Parse the output to find the port mapping
+      // Example output line: test-site_wordpress_1 ... 0.0.0.0:8083->80/tcp ...
+      const lines = stdout.split('\n');
       for (const line of lines) {
-        if (line.includes('wordpress')) {
-          // Example: "my-project_wordpress 0.0.0.0:32769->80/tcp"
-          const match = line.match(/:(\d+)->80\/tcp/);
-          if (match && match[1]) {
-            return Number.parseInt(match[1], 10);
-          }
+        if (line.includes('_wordpress')) { // Check for the wordpress service name
+           const match = line.match(/0\.0\.0\.0:(\d+)->80\/tcp/);
+           if (match && match[1]) {
+             return Number.parseInt(match[1], 10);
+           }
         }
       }
       
-      // If we can't determine the port, use the default
+      // If parsing fails, return the default
       return defaultPort;
-    } catch {
-      // In case of error, fall back to the default port
+    } catch (error) {
+      // Log error? Maybe only in debug mode.
+      if (this.flags.debug) {
+          console.error(`Error getting WP port via docker-compose: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      // In case of error (e.g., docker-compose not found, file missing), fall back to the default port
       return defaultPort;
     }
   }
@@ -982,102 +949,54 @@ wp option update siteurl '${ngrokUrl}' --allow-root
    * Restore the WordPress wp-config.php from backup
    */
   private async restoreWordPressConfig(
-    container: string,
+    containerName: string,
     spinner: ReturnType<typeof ora>
   ): Promise<void> {
-    try {
-      // Try to find the WordPress config file and backup using several strategies
-      let wpConfigPath = '';
-      let wpConfigBackupPath = '';
-      
-      // Strategy 1: Project root
-      const projectRoot = this.findProjectRoot();
-      if (projectRoot) {
-        const configPath = `${projectRoot}/wordpress/wp-config.php`;
-        if (fs.existsSync(`${configPath}.bak`)) {
-          wpConfigPath = configPath;
-          wpConfigBackupPath = `${configPath}.bak`;
-        }
-      }
-      
-      // Strategy 2: Docker volume path (only works with local volumes)
-      if (!wpConfigPath) {
-        try {
-          const { stdout: inspectOutput } = await execa('docker', [
-            'inspect',
-            '--format',
-            '{{range .Mounts}}{{if eq .Destination "/var/www/html"}}{{.Source}}{{end}}{{end}}',
-            container
-          ]);
-          
-          if (inspectOutput && inspectOutput.trim()) {
-            const volPath = `${inspectOutput.trim()}/wp-config.php`;
-            if (fs.existsSync(`${volPath}.bak`)) {
-              wpConfigPath = volPath;
-              wpConfigBackupPath = `${volPath}.bak`;
-            }
-          }
-        } catch {
-          // Continue with other strategies
-        }
-      }
-      
-      // Strategy 3: Look for specific paths if forced (your specific setup)
-      if (!wpConfigPath) {
-        const possiblePaths = [
-          '/Users/danielkapin/Projects/test-site/test-site/wordpress/wp-config.php'
-        ];
-        
-        for (const path of possiblePaths) {
-          if (fs.existsSync(`${path}.bak`)) {
-            wpConfigPath = path;
-            wpConfigBackupPath = `${path}.bak`;
-            break;
-          }
-        }
-      }
-      
-      // Check if we found the backup
-      if (wpConfigBackupPath && fs.existsSync(wpConfigBackupPath)) {
+    const DEBUG = process.env.DEBUG === 'true';
+    if (DEBUG) console.log(`restoreWordPressConfig called for container: ${containerName}`);
+
+    const projectPath = this.docker?.getProjectPath();
+    if (!projectPath) {
+        spinner.fail('Cannot restore config: Project path not determined.');
+        return; 
+    }
+    if (DEBUG) console.log(`restoreWordPressConfig - projectPath: ${projectPath}`);
+
+    const wpConfigPath = path.join(projectPath, 'wordpress', 'wp-config.php');
+    const wpConfigBackupPath = `${wpConfigPath}.bak`;
+    if (DEBUG) console.log(`Looking for backup: ${wpConfigBackupPath}`);
+
+    // Check if we found the backup
+    if (fs.existsSync(wpConfigBackupPath)) {
         // Restore from backup
         fs.copyFileSync(wpConfigBackupPath, wpConfigPath);
         fs.unlinkSync(wpConfigBackupPath);
         spinner.succeed(`WordPress configuration restored from backup at ${wpConfigPath}`);
-      } else {
-        // Search for any wp-config.php to try to remove the ngrok configuration
-        if (!wpConfigPath) {
-          const possiblePaths = [
-            '/Users/danielkapin/Projects/test-site/test-site/wordpress/wp-config.php'
-          ];
-          
-          for (const path of possiblePaths) {
-            if (fs.existsSync(path)) {
-              wpConfigPath = path;
-              break;
+    } else {
+        // If no backup, try removing the ngrok block from the existing file
+        if (DEBUG) console.log(`Backup not found. Trying to remove block from: ${wpConfigPath}`);
+        if (fs.existsSync(wpConfigPath)) {
+            let configContent = fs.readFileSync(wpConfigPath, 'utf8');
+            
+            // Remove the ngrok-specific configuration, without trailing newline
+            const pattern = /\/\/ Begin ngrok-specific URL configuration[\s\S]*?\/\/ End ngrok-specific URL configuration\n?/;
+            const originalLength = configContent.length;
+            configContent = configContent.replace(pattern, '');
+            
+            if (configContent.length < originalLength) { // Check if replacement happened
+                // Remove any double blank lines created by removal
+                configContent = configContent.replaceAll(/\n\n\n+/g, '\n\n');
+                
+                // Write the updated config back to the file
+                fs.writeFileSync(wpConfigPath, configContent);
+                spinner.succeed(`WordPress configuration restored by removing ngrok block at ${wpConfigPath}`);
+            } else {
+                 if (DEBUG) console.log('Ngrok block not found in wp-config.php, no changes made.');
+                 spinner.warn('Could not find ngrok block in wp-config.php to remove.');
             }
-          }
-        }
-        
-        if (wpConfigPath && fs.existsSync(wpConfigPath)) {
-          let configContent = fs.readFileSync(wpConfigPath, 'utf8');
-          
-          // Remove the ngrok-specific configuration, without trailing newline
-          const pattern = /\/\/ Begin ngrok-specific URL configuration[\s\S]*?\/\/ End ngrok-specific URL configuration\n?/;
-          configContent = configContent.replace(pattern, '');
-          
-          // Remove any double blank lines created by removal
-          configContent = configContent.replaceAll(/\n\n\n+/g, '\n\n');
-          
-          // Write the updated config back to the file
-          fs.writeFileSync(wpConfigPath, configContent);
-          spinner.succeed(`WordPress configuration restored by removing ngrok block at ${wpConfigPath}`);
         } else {
-          spinner.warn('Could not find wp-config.php or backup to restore');
+            spinner.warn('Could not find wp-config.php or backup to restore.');
         }
-      }
-    } catch (error) {
-      spinner.fail('Failed to restore WordPress configuration');
-      throw error;
     }
   }
 

@@ -103,7 +103,6 @@
     "lint": "eslint",
     "postpack": "shx rm -f oclif.manifest.json",
     "prepack": "npm run manifest && npm run readme",
-    "postinstall": "node ./dist/bootstrap.js",
     "test": "node test.js",
     "test:mock": "node test/mock-test.js",
     "test:watch": "mocha --watch --forbid-only \"test/**/*.test.ts\"",
