@@ -63,4 +63,18 @@ static examples = ['<%= config.bin %> theme --add twentytwentyfour', '<%= config
       this.error(`Operation failed: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
+
+  /**
+   * Check if WordPress container is running
+   */
+  private async checkWordPressContainer(): Promise<void> {
+    await this.isWordPressRunning();
+  }
+
+  /**
+   * Run WP-CLI command
+   */
+  private async runWpCli(command: string): Promise<string> {
+    return this.execWpCommand(command);
+  }
 }

@@ -1,244 +1,314 @@
-import { Command } from '@oclif/core';
-import boxen from 'boxen';
+import { Command, Flags } from '@oclif/core';
+import { execSync, spawn } from 'node:child_process';
+import * as fs from 'node:fs';
+import path from 'node:path';
 import chalk from 'chalk';
-import fs from 'fs-extra';
-import { execSync } from 'node:child_process';
-import * as os from 'node:os';
-import { join } from 'node:path';
-
+import debugFactory from 'debug';
 import { IDockerService } from '../services/docker-interface.js';
 import { DockerService } from '../services/docker.js';
+import { getSiteByName } from '../config/sites.js';
 
-export class BaseCommand extends Command {
-  static hidden = true;
-  protected dockerService: IDockerService = new DockerService('');
-  protected projectPath: string = '';
+export const baseFlags = {
+  site: Flags.string({
+    char: 's',
+    description: 'Site path or site name',
+    env: 'WP_SPIN_SITE_PATH',
+  }),
+};
 
+export abstract class BaseCommand extends Command {
+  static baseFlags = baseFlags;
+
+  /**
+   * Debug logger
+   */
+  protected debugLogger!: debugFactory.Debugger;
+
+  /**
+   * Docker service instance
+   */
+  protected docker!: IDockerService;
+
+  /**
+   * Initialize the command
+   */
+  public async init(): Promise<void> {
+    await super.init();
+    const { flags } = await this.parse(this.constructor as typeof Command);
+    
+    // Initialize the debugger
+    this.debugLogger = debugFactory('wp-spin:base');
+
+    try {
+      // Resolve the site path
+      const resolvedPath = this.resolveSitePath(flags.site);
+
+      
+      // Pass this command instance to DockerService
+      this.docker = new DockerService(resolvedPath, this);
+    } catch (error) {
+      this.prettyError(error instanceof Error ? error : new Error(String(error)));
+      this.exit(1);
+    }
+  }
+
+  /**
+   * Execute the command
+   */
+  public async run(): Promise<void> {
+    // this is a base class designed to be extended
+    // so this method doesn't do anything
+  }
+
+  /**
+   * Check if Docker is installed and running
+   */
   protected async checkDockerEnvironment(): Promise<void> {
     try {
-      // Check if Docker is running
-      execSync('docker info', {stdio: 'ignore'});
-    } catch {
-      this.error('Docker is not running or not installed. Please start Docker and try again.');
+      await this.docker.checkDockerInstalled();
+      await this.docker.checkDockerRunning();
+      await this.docker.checkDockerComposeInstalled();
+    } catch (error: unknown) {
+      this.prettyError(error instanceof Error ? error : new Error(String(error)));
+      this.exit(1);
     }
   }
 
-  protected async checkProjectExists(): Promise<void> {
-    if (!await this.dockerService.checkProjectExists()) {
-      this.error('No WordPress project found. Please run `wp-spin init` first.');
-    }
-  }
-
-  protected async checkWordPressContainer(): Promise<void> {
+  /**
+   * Check if the current directory is a valid wp-spin project
+   */
+  protected async checkProjectExists(autoExit = true): Promise<boolean> {
     try {
-      // Check if the WordPress container is running
-      const containers = execSync('docker ps --format "{{.Names}}"').toString();
-      if (!containers.includes('wordpress')) {
-        this.error('WordPress container is not running. Please start your Docker environment first.');
+      return await this.docker.checkProjectExists();
+    } catch (error: unknown) {
+      if (autoExit) {
+        this.prettyError(error instanceof Error ? error : new Error(String(error)));
+        this.exit(1);
       }
-    } catch (error) {
-      this.error(`Failed to check WordPress container: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  protected async ensureProjectDirectory(): Promise<void> {
-    const requiredFiles = ['docker-compose.yml', '.env'];
-    for (const file of requiredFiles) {
-      if (!this.existsSync(join(process.cwd(), file))) {
-        this.prettyError(
-          'Project Directory Error',
-          `Not a WordPress project directory. Missing ${chalk.bold(file)}`,
-          'Make sure you are in the correct directory or run `wp-spin init` to create a new project.'
-        );
-      }
-    }
-  }
-
-  protected existsSync(filePath: string): boolean {
-    try {
-      return fs.existsSync(filePath);
-    } catch {
+      
       return false;
     }
   }
 
   /**
-   * Finds the root directory of a wp-spin project by walking up the directory tree
-   * @returns The absolute path to the project root or null if not found
+   * Check if a file or directory exists
    */
-  protected findProjectRoot(startPath: string = process.cwd()): null | string {
-    // Set DEBUG=true in environment to see detailed debugging
-    const DEBUG = process.env.DEBUG === 'true';
-    
-    if (DEBUG) {
-      console.log(`Checking directory for project: ${startPath}`);
-    }
-    
-    // Check if the current directory is a valid wp-spin project
-    const isProject = this.isWpSpinProject(startPath);
-    
-    if (DEBUG) {
-      console.log(`Is project directory? ${isProject}`);
-      
-      // Additional debugging checks
-      const wpSpinExists = fs.existsSync(join(startPath, '.wp-spin'));
-      const dockerComposeExists = fs.existsSync(join(startPath, 'docker-compose.yml'));
-      const envExists = fs.existsSync(join(startPath, '.env'));
-      
-      console.log(`.wp-spin exists? ${wpSpinExists}`);
-      console.log(`docker-compose.yml exists? ${dockerComposeExists}`);
-      console.log(`.env exists? ${envExists}`);
-    }
-    
-    if (isProject) {
-      return startPath;
-    }
-
-    // Get the parent directory
-    const parentDir = join(startPath, '..');
-    
-    // If we've reached the filesystem root, stop looking
-    if (parentDir === startPath) {
-      if (DEBUG) {
-        console.log('Reached filesystem root, stopping search');
-      }
-
-      return null;
-    }
-    
-    // Recursively check the parent directory
-    return this.findProjectRoot(parentDir);
-  }
-
-  protected async handlePortConflict(port: number): Promise<number> {
-    try {
-      // Find the next available port
-      let nextPort = port + 1;
-      while (nextPort < 65_535) {
-        try {
-          execSync(`lsof -i :${nextPort}`, {stdio: 'ignore'});
-          nextPort++;
-        } catch {
-          // Port is available
-          break;
-        }
-      }
-
-      // Auto-select next available port in test environment
-      if (process.env.NODE_ENV === 'test') {
-        console.log(chalk.yellow(`Port ${port} is in use, using port ${nextPort} instead`));
-        return nextPort;
-      }
-
-      // In non-test environment, use a simple console message for now
-      console.log(chalk.yellow(`Port ${port} is already in use. Options:`));
-      console.log(`1. Use next available port (${nextPort})`);
-      console.log('2. Stop the current instance');
-      console.log('3. Cancel operation');
-      console.log('Using option 1 by default (automatic port selection)');
-      
-      // Return the next port - this just simulates what would happen
-      // when the user selects option 1
-      return nextPort;
-    } catch (error) {
-      this.error(`Failed to handle port conflict: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
-  async init() {
-    const homeDir = os.homedir();
-    this.projectPath = join(homeDir, '.wp-spin');
-    
-    // Use mock DockerService when testing
-    if (process.env.USE_DOCKER_MOCK === 'true') {
-      // Using dynamic import to avoid circular dependencies
-      const { DockerService: MockDockerService } = await import('../services/__mocks__/docker.js');
-      this.dockerService = new MockDockerService(this.projectPath);
-    } else {
-      this.dockerService = new DockerService(this.projectPath);
-    }
+  protected existsSync(path: string): boolean {
+    return fs.existsSync(path);
   }
 
   /**
-   * Checks if a directory is a valid wp-spin project
-   * @param dir The directory to check
-   * @returns true if the directory is a valid wp-spin project
+   * Execute WP-CLI command in WordPress container
    */
-  protected isWpSpinProject(dir: string): boolean {
-    // Set DEBUG=true in environment to see detailed debugging
-    const DEBUG = process.env.DEBUG === 'true';
+  protected async execWpCommand(command: string, container?: string): Promise<string> {
+    if (!container) {
+      const containerNames = this.getContainerNames();
+      container = containerNames.wordpress;
+    }
     
-    try {
-      // First try a direct check for the .wp-spin marker file (preferred method)
-      const wpSpinPath = join(dir, '.wp-spin');
-      const wpSpinExists = fs.existsSync(wpSpinPath);
-      
-      if (DEBUG) {
-        console.log(`Direct check for .wp-spin at ${wpSpinPath}: ${wpSpinExists}`);
-      }
-      
-      if (wpSpinExists) {
-        return true;
-      }
-      
-      // Fall back to checking for required files (for backward compatibility)
-      const requiredFiles = ['docker-compose.yml', '.env'];
-      const allFilesExist = requiredFiles.every(file => {
-        const filePath = join(dir, file);
-        const exists = fs.existsSync(filePath);
-        
-        if (DEBUG) {
-          console.log(`Checking for ${file} at ${filePath}: ${exists}`);
-        }
-        
-        return exists;
+    return new Promise((resolve, reject) => {
+      const proc = spawn('docker', ['exec', container, 'sh', '-c', command], {
+        stdio: ['inherit', 'pipe', 'pipe'],
       });
       
-      return allFilesExist;
-    } catch (error) {
-      // Add extra error handling to debug issues
-      if (DEBUG) {
-        console.error(`Error checking if directory is a project: ${error instanceof Error ? error.message : String(error)}`);
-      }
+      let output = '';
+      proc.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+      
+      proc.stderr.on('data', (data) => {
+        this.error(data.toString());
+      });
+      
+      proc.on('close', (code) => {
+        if (code === 0) {
+          resolve(output.trim());
+        } else {
+          reject(new Error(`Command failed with exit code ${code}`));
+        }
+      });
+    });
+  }
 
+  /**
+   * Find a free port starting from the original port + 1
+   */
+  protected findFreePort(startPort: number): number {
+    // Simple implementation: just increment the port
+    // In a real-world scenario, you would check if the port is actually available
+    return startPort + 1;
+  }
+
+  /**
+   * Find project root by walking up the directory tree
+   */
+  protected findProjectRoot(startPath?: string): null | string {
+
+    let dockerPath: string | undefined;
+    if (this.docker) {
+      dockerPath = this.docker.getProjectPath();
+    }
+
+    // Force use of Docker service path if it exists, otherwise use startPath, otherwise use cwd
+    const effectiveStartPath = dockerPath || startPath || process.cwd();
+    let currentPath = effectiveStartPath;
+
+    
+    // Walk up the directory tree
+    while (currentPath !== path.parse(currentPath).root) {
+      if (this.isWpSpinProject(currentPath)) {
+        return currentPath;
+      }
+      
+      currentPath = path.dirname(currentPath);
+    }
+    
+    // Check root directory
+    if (this.isWpSpinProject(currentPath)) {
+      return currentPath;
+    }
+    
+    return null;
+  }
+
+  /**
+   * Get container names for the current project
+   */
+  protected getContainerNames(): { mysql: string; wordpress: string } {
+    const projectName = path.basename(this.docker.getProjectPath());
+    return {
+      mysql: `${projectName}_mysql_1`,
+      wordpress: `${projectName}_wordpress_1`,
+    };
+  }
+
+  /**
+   * Handle port conflict by finding a free port and updating the docker-compose file
+   */
+  protected async handlePortConflict(originalPort: number): Promise<number> {
+    // Find a free port and update docker-compose file
+    const newPort = this.findFreePort(originalPort);
+    // Update docker-compose file
+    await this.docker.updateDockerComposePorts(originalPort, newPort);
+    return newPort;
+  }
+
+  /**
+   * Check if the WordPress container is running
+   */
+  protected async isWordPressRunning(autoExit = true): Promise<boolean> {
+    try {
+      const result = execSync('docker ps -q -f name=wordpress', { encoding: 'utf8' });
+      if (!result.trim()) {
+        if (autoExit) {
+          this.prettyError(new Error('WordPress container is not running. Run `wp-spin start` to start it.'));
+          this.exit(1);
+        }
+        
+        return false;
+      }
+      
+      return true;
+    } catch (error: unknown) {
+      if (autoExit) {
+        this.prettyError(error instanceof Error ? error : new Error(String(error)));
+        this.exit(1);
+      }
+      
       return false;
     }
   }
-
-  protected prettyError(title: string, message: string, suggestion?: string): never {
-    const errorBox = boxen(
-      `${chalk.red.bold(title)}\n\n${message}${suggestion ? `\n\n${chalk.yellow('💡 Suggestion:')} ${suggestion}` : ''}`,
-      {
-        borderColor: 'red',
-        borderStyle: 'round',
-        margin: 1,
-        padding: 1,
-        title: 'Error',
-        titleAlignment: 'center',
-      }
-    );
-
-    console.error(errorBox);
-    throw new Error(message);
-  }
-
-  async run(): Promise<void> {
-    // Base implementation does nothing
-  }
   
-  protected runWpCli(command: string): void {
-    try {
-      // Get the actual container name
-      const containers = execSync('docker ps --format "{{.Names}}"').toString();
-      const wordpressContainer = containers.split('\n').find(name => name.includes('wordpress'));
-      
-      if (!wordpressContainer) {
-        this.error('WordPress container is not running. Please start your Docker environment first.');
-      }
-
-      execSync(`docker exec ${wordpressContainer} ${command}`, {stdio: 'inherit'});
-    } catch (error) {
-      this.error(`Failed to execute WP-CLI command: ${error instanceof Error ? error.message : String(error)}`);
+  /**
+   * Check if directory is a valid wp-spin project
+   */
+  protected isWpSpinProject(dir: string): boolean {
+    
+    if (!dir) {
+      return false;
     }
+
+    const dockerComposePath = path.join(dir, 'docker-compose.yml');
+    
+    if (!fs.existsSync(dockerComposePath)) {
+
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Log debug message
+   */
+  protected logDebug(message: string): void {
+    // Cast to unknown first, then to Record to avoid type errors
+    const config = this.config as unknown as Record<string, unknown>;
+    const debug = config.debug === '1';
+    if (debug) {
+      this.debugLogger(message);
+    }
+  }
+
+  /**
+   * Pretty print an error
+   */
+  protected prettyError(error: Error): void {
+    this.log(`\n${chalk.red.bold('Error:')} ${error.message}\n`);
+  }
+
+  /**
+   * Resolve site path
+   */
+  protected resolveSitePath(sitePath?: string): string {
+    if (sitePath) {
+      
+      // First, check if sitePath is a registered site name
+      try {
+        const site = getSiteByName(sitePath);
+
+        if (site) {
+          if (!this.isWpSpinProject(site.path)) {
+            this.prettyError(new Error(`Registered site "${sitePath}" path (${site.path}) is not a valid wp-spin project.`));
+            this.exit(1);
+          }
+
+          return site.path;
+        }
+      } catch (error) {
+        this.logDebug(`Error resolving site by name: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      
+      // Check if path is absolute or relative
+      if (path.isAbsolute(sitePath)) {
+        if (!this.isWpSpinProject(sitePath)) {
+          this.prettyError(new Error(`${sitePath} is not a valid wp-spin project.`));
+          this.exit(1);
+        }
+        
+        return sitePath;
+      }
+      
+      // Relative path
+      const absolutePath = path.resolve(process.cwd(), sitePath);
+      if (!this.isWpSpinProject(absolutePath)) {
+        this.prettyError(new Error(`${absolutePath} is not a valid wp-spin project.`));
+        this.exit(1);
+      }
+      
+      return absolutePath;
+    }
+    
+    // Use current directory or walk up to find a project
+    const projectRoot = this.findProjectRoot();
+    if (projectRoot) {
+      return projectRoot;
+    }
+    
+    // If no project root was found, just return the current directory
+    // This will likely fail later with a more specific error
+    this.prettyError(new Error('No WordPress project found in this directory or any parent directory. Make sure you are inside a wp-spin project or specify a valid site path with --site.'));
+    this.exit(1);
+    return process.cwd(); // This line will never be reached due to this.exit(1) above
   }
 }

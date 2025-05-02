@@ -1,6 +1,7 @@
 import { Config } from '@oclif/core';
 import path from 'node:path';
 import ora from 'ora';
+import * as fs from 'node:fs';
 
 import { DockerService } from '../services/docker.js';
 import { BaseCommand } from './base.js';
@@ -24,7 +25,7 @@ protected docker: DockerService;
 
     try {
       // Check if project exists
-      if (!this.existsSync(path.join(projectPath, 'docker-compose.yml'))) {
+      if (!fs.existsSync(path.join(projectPath, 'docker-compose.yml'))) {
         this.error('No WordPress project found in current directory');
       }
 

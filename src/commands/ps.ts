@@ -14,9 +14,15 @@ export default class ContainerStatus extends BaseCommand {
   static description = 'Show status of Docker containers for this project';
   static examples = [
     '$ wp-spin ps',
+    '$ wp-spin ps --site=my-site',
+    '$ wp-spin ps --site=/path/to/my-site',
   ];
+  static flags = {
+    ...BaseCommand.baseFlags,
+  };
   static hidden = false;
   protected docker: DockerService;
+  protected siteDirectory?: string;
 
   constructor(argv: string[], config: Config) {
     super(argv, config);
@@ -27,11 +33,12 @@ export default class ContainerStatus extends BaseCommand {
     const spinner = ora();
     
     try {
-      // Find the project root directory
-      const projectRoot = this.findProjectRoot();
+      // Find the project root directory, starting from site directory if specified
+      const startPath = this.siteDirectory || process.cwd();
+      const projectRoot = this.findProjectRoot(startPath);
       
       if (!projectRoot) {
-        this.error('No WordPress project found in this directory or any parent directory. Make sure you are inside a wp-spin project.');
+        this.error('No WordPress project found in this directory or any parent directory. Make sure you are inside a wp-spin project or specify a valid site path with --site.');
       }
       
       // Update docker service with the correct project path

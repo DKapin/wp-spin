@@ -404,6 +404,25 @@ export class DockerService implements IDockerService {
     }
   }
 
+  /**
+   * Gets logs as a string instead of streaming to console
+   * @returns The logs from all containers or empty string on error
+   */
+  async getLogs(): Promise<string> {
+    try {
+      // Get logs without following (-f) to get just the current logs
+      const { stdout } = await execa('docker-compose', ['logs'], {
+        cwd: this.projectPath,
+        stdio: 'pipe',
+      });
+      
+      return stdout;
+    } catch (error) {
+      console.error('Error getting logs:', error instanceof Error ? error.message : String(error));
+      return '';
+    }
+  }
+
   async restart(): Promise<void> {
     this.spinner.start('Restarting WordPress environment...');
     try {

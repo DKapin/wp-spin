@@ -1,4 +1,4 @@
-import { Config } from '@oclif/core';
+import { Config, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { execa } from 'execa';
 import ora from 'ora';
@@ -8,11 +8,17 @@ import { BaseCommand } from './base.js';
 
 export default class Start extends BaseCommand {
   static description = 'Start the WordPress environment';
-static examples = [
+  static examples = [
     '$ wp-spin start',
+    '$ wp-spin start --site=my-site',
+    '$ wp-spin start --site=/path/to/my-site',
   ];
-static hidden = false;
-protected docker: DockerService;
+  static flags = {
+    ...BaseCommand.baseFlags,
+  };
+  static hidden = false;
+  protected docker: DockerService;
+  protected siteDirectory?: string;
 
   constructor(argv: string[], config: Config) {
     super(argv, config);
@@ -23,11 +29,12 @@ protected docker: DockerService;
     const spinner = ora();
 
     try {
-      // Find the project root directory
-      const projectRoot = this.findProjectRoot();
+      // Find the project root directory, starting from site directory if specified
+      const startPath = this.siteDirectory || process.cwd();
+      const projectRoot = this.findProjectRoot(startPath);
       
       if (!projectRoot) {
-        this.error('No WordPress project found in this directory or any parent directory. Make sure you are inside a wp-spin project.');
+        this.error('No WordPress project found in this directory or any parent directory. Make sure you are inside a wp-spin project or specify a valid site path with --site.');
       }
       
       // Update docker service with the correct project path

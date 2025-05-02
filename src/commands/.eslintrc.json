@@ -1,0 +1,17 @@
+{
+  "rules": {
+    "perfectionist/sort-imports": "off",
+    "perfectionist/sort-classes": "off",
+    "perfectionist/sort-objects": "off",
+    "perfectionist/sort-union-types": "off",
+    "perfectionist/sort-object-types": "off",
+    "perfectionist/sort-named-imports": "off",
+    "perfectionist/sort-named-exports": "off",
+    "perfectionist/sort-interfaces": "off",
+    "@stylistic/lines-between-class-members": "off",
+    "lines-between-class-members": "off",
+    "max-params": "warn",
+    "@typescript-eslint/no-unused-vars": "warn",
+    "@typescript-eslint/no-require-imports": "warn"
+  }
+} 

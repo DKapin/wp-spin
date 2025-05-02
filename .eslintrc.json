@@ -3,8 +3,8 @@
   "rules": {
     "complexity": ["warn", { "max": 35 }],
     "max-depth": ["warn", { "max": 8 }],
-    "no-await-in-loop": "warn",
-    "@typescript-eslint/no-explicit-any": "warn",
+    "no-await-in-loop": "off",
+    "@typescript-eslint/no-explicit-any": "off",
     "@typescript-eslint/no-unused-vars": "warn",
     "@typescript-eslint/no-require-imports": "warn",
     "unicorn/prefer-switch": "warn",
@@ -13,12 +13,19 @@
     "unicorn/import-style": "warn",
     "unicorn/prefer-module": "warn",
     "no-undef": "warn",
-    "no-lonely-if": "warn",
+    "no-lonely-if": "off",
     "perfectionist/sort-imports": "off",
     "perfectionist/sort-classes": "off",
     "perfectionist/sort-objects": "off",
     "perfectionist/sort-union-types": "off",
     "perfectionist/sort-object-types": "off",
-    "import/no-named-as-default-member": "warn"
+    "perfectionist/sort-named-imports": "off",
+    "perfectionist/sort-named-exports": "off",
+    "perfectionist/sort-interfaces": "off",
+    "import/no-named-as-default-member": "warn",
+    "unicorn/prefer-string-replace-all": "off",
+    "@stylistic/lines-between-class-members": "off",
+    "lines-between-class-members": "off",
+    "perfectionist/sort-union-types": "off"
   }
 } 

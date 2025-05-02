@@ -1,0 +1,22 @@
+- Checking for ngrok...
+✔ ngrok is already installed
+- Creating ngrok tunnel to http://localhost:8083...
+✔ WordPress site is now publicly available at: https://21cb-72-106-68-83.ngrok-free.app
+
+🌎 Public URL information:
+WordPress Site: https://21cb-72-106-68-83.ngrok-free.app
+Local URL: http://localhost:8083
+
+⚠️  Press Ctrl+C to stop sharing and close the tunnel
+✖ Failed to start ngrok tunnel
+✖ Failed to share WordPress site
+Error: Failed to start ngrok tunnel: Command was killed with SIGKILL (Forced termination): 'npx ngrok' http --region us 8083
+
+Flag --region has been deprecated, ngrok automatically chooses the region with lowest latency
+    at Object.error (/Users/danielkapin/Projects/wp-spin/node_modules/@oclif/core/lib/errors/error.js:44:15)
+    at Share.error (/Users/danielkapin/Projects/wp-spin/node_modules/@oclif/core/lib/command.js:210:23)
+    at Share.run (file:///Users/danielkapin/Projects/wp-spin/dist/commands/share.js:348:22)
+    at async Share._run (/Users/danielkapin/Projects/wp-spin/node_modules/@oclif/core/lib/command.js:181:22)
+    at async Config.runCommand (/Users/danielkapin/Projects/wp-spin/node_modules/@oclif/core/lib/config/config.js:456:25)
+    at async run (/Users/danielkapin/Projects/wp-spin/node_modules/@oclif/core/lib/main.js:96:16)
+    at async file:///Users/danielkapin/Projects/wp-spin/bin/dev.js:5:1

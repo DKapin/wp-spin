@@ -1,0 +1,64 @@
+{
+  "default": {
+    "provider": "ssh",
+    "backup": true,
+    "db": true,
+    "media": true
+  },
+  "production": {
+    "provider": "wpengine",
+    "predeploy": "npm run build"
+  },
+  "staging": {
+    "provider": "digitalocean",
+    "host": "staging.example.com",
+    "path": "/var/www/html",
+    "backup": true,
+    "db": true,
+    "media": true
+  },
+  "development": {
+    "provider": "ssh",
+    "host": "dev.example.com",
+    "path": "/var/www/wordpress",
+    "backup": false,
+    "db": true,
+    "media": false
+  },
+  "siteground-example": {
+    "provider": "siteground",
+    "host": "example.com",
+    "path": "/public_html",
+    "predeploy": "npm run build:prod"
+  },
+  "cloudways-example": {
+    "provider": "cloudways",
+    "host": "12.34.56.78",
+    "path": "/applications/abcdef/public_html",
+    "backup": true
+  },
+  "git-example": {
+    "provider": "git",
+    "repository": "git@github.com:username/repo.git",
+    "branch": "main",
+    "predeploy": "composer install && npm run build"
+  },
+  "aws-ec2-example": {
+    "provider": "aws",
+    "host": "ec2-12-34-56-78.compute-1.amazonaws.com",
+    "path": "/var/www/html",
+    "backup": true,
+    "db": true,
+    "predeploy": "npm run build:prod"
+  },
+  "aws-s3-example": {
+    "provider": "aws",
+    "host": "s3.amazonaws.com",
+    "path": "my-bucket/wordpress-site",
+    "region": "us-west-2",
+    "predeploy": "npm run build:prod",
+    "options": {
+      "cloudfront_distribution_id": "E1ABCDEFGHIJKL"
+    }
+  }
+} 
