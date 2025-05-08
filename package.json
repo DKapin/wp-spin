@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@eslint/compat": "^1",
+    "@istanbuljs/nyc-config-typescript": "^1.0.2",
     "@oclif/prettier-config": "^0.2.1",
     "@oclif/test": "^4.1.12",
     "@types/chai": "^4.3.20",
@@ -31,11 +32,13 @@
     "@types/ora": "^3.2.0",
     "@types/sinon": "^17.0.3",
     "@types/sinon-chai": "^3.2.12",
+    "c8": "^10.1.3",
     "chai": "^4.5.0",
     "chai-as-promised": "^7.1.1",
     "eslint": "^9",
     "eslint-config-oclif": "^6",
     "eslint-config-prettier": "^10",
+    "esmock": "^2.7.0",
     "husky": "^9.1.7",
     "lint-staged": "^15.5.1",
     "mocha": "^10",
@@ -105,21 +108,26 @@
     "prepack": "npm run manifest && npm run readme",
     "test": "node test.js",
     "test:mock": "node test/mock-test.js",
-    "test:watch": "mocha --watch --forbid-only \"test/**/*.test.ts\"",
-    "test:coverage": "nyc --reporter=html --reporter=text mocha --forbid-only \"test/**/*.test.ts\"",
-    "test:debug": "NODE_OPTIONS=--inspect-brk mocha --forbid-only \"test/**/*.test.ts\"",
-    "test:mocha": "nyc mocha --forbid-only \"test/**/*.test.ts\"",
+    "test:watch": "NODE_OPTIONS=\"--no-deprecation --no-warnings --require ts-node/register\" mocha --watch --forbid-only \"test/**/*.test.ts\"",
+    "test:coverage": "npm run build && NODE_OPTIONS=\"--no-deprecation --no-warnings --require ts-node/register\" npx c8 --reporter=html --reporter=text mocha --forbid-only \"test/**/*.test.ts\"",
+    "test:debug": "NODE_OPTIONS=\"--inspect-brk --require ts-node/register\" mocha --forbid-only \"test/**/*.test.ts\"",
+    "test:mocha": "NODE_OPTIONS=\"--no-deprecation --no-warnings --require ts-node/register\" npx c8 mocha --forbid-only \"test/**/*.test.ts\"",
     "test:lint": "npm run test && npm run lint",
     "test:all": "npm run test && npm run lint && echo \"✅ All basic tests passed!\"",
     "test:quick": "npm run test",
     "test:verify": "npm run build && npm run test:all && echo \"✅ Verification complete!\"",
     "test:ci": "npm run build && npm run test && npm run lint",
-    "coverage": "nyc report --reporter=text-lcov > coverage.lcov",
+    "coverage": "npx c8 report --reporter=text-lcov > coverage.lcov",
     "version": "npm run readme && git add README.md",
     "deploy": "npm run build && npm run manifest && npm run readme && npm install -g .",
     "prepare": "husky",
     "prepare:commit": "npm run build && npm run test && npm run lint",
-    "verify": "npm run test:verify"
+    "verify": "npm run test:verify",
+    "test:coverage-c8": "npm run build && NODE_OPTIONS=\"--no-deprecation --no-warnings --require ts-node/register\" npx c8 --reporter=html --reporter=text mocha --forbid-only \"test/**/*.test.ts\"",
+    "test:coverage-c8-init": "npm run build && NODE_OPTIONS=\"--no-deprecation --no-warnings --require ts-node/register\" npx c8 --reporter=html --reporter=text mocha --forbid-only \"test/commands/init.test.ts\"",
+    "integration-test": "NODE_ENV=test USE_DOCKER_MOCK=true node integration-test.js",
+    "test:coverage-integration": "npm run build && npx c8 --reporter=html --reporter=text npm run integration-test",
+    "test:combined-coverage": "npm run build && npx c8 --reporter=html --reporter=text --reporter=lcov --clean node integration-test.js && echo '\\n✅ Coverage report generated. Check the coverage directory.'"
   },
   "lint-staged": {
     "*.{ts,js}": [
@@ -138,7 +146,16 @@
       "test/**/*",
       "dist/**/*"
     ],
-    "all": true
+    "all": true,
+    "include": [
+      "src/**/*.ts"
+    ],
+    "esm": true,
+    "sourceMap": true,
+    "instrument": true,
+    "require": [
+      "ts-node/register"
+    ]
   },
   "types": "./dist/index.d.ts",
   "private": true

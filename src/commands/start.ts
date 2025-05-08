@@ -1,4 +1,4 @@
-import { Config, Flags } from '@oclif/core';
+import { Config } from '@oclif/core';
 import chalk from 'chalk';
 import { execa } from 'execa';
 import ora from 'ora';

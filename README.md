@@ -100,7 +100,6 @@ wp-spin includes several security enhancements:
 <!-- commands -->
 * [`wp-spin base`](#wp-spin-base)
 * [`wp-spin containers`](#wp-spin-containers)
-* [`wp-spin deploy [DESTINATION]`](#wp-spin-deploy-destination)
 * [`wp-spin init NAME`](#wp-spin-init-name)
 * [`wp-spin logs`](#wp-spin-logs)
 * [`wp-spin plugin`](#wp-spin-plugin)
@@ -152,50 +151,6 @@ EXAMPLES
 
   $ wp-spin ps --site=/path/to/my-site
 ```
-
-## `wp-spin deploy [DESTINATION]`
-
-Deploy WordPress project to a remote host
-
-```
-USAGE
-  $ wp-spin deploy [DESTINATION] [-s <value>] [-h <value>] [-p
-    aws|digitalocean|wpengine|siteground|cloudways|ssh|git] [--path <value>] [--db] [--predeploy <value>] [--media]
-    [--backup] [--dry-run]
-
-ARGUMENTS
-  DESTINATION  Deployment destination (can be an alias defined in deploy.config.json)
-
-FLAGS
-  -h, --host=<value>       Destination host (IP address or domain)
-  -p, --provider=<option>  Hosting provider (aws, digitalocean, wpengine, siteground, cloudways, ssh, git)
-                           <options: aws|digitalocean|wpengine|siteground|cloudways|ssh|git>
-  -s, --site=<value>       Site path or site name
-      --backup             Create backup of the existing site on the remote host
-      --db                 Include WordPress database in the deployment
-      --dry-run            Simulate the deployment without performing actual changes
-      --media              Include wp-content/uploads directory in the deployment
-      --path=<value>       Remote path where WordPress files will be deployed
-      --predeploy=<value>  Run a local shell command before deployment
-
-DESCRIPTION
-  Deploy WordPress project to a remote host
-
-EXAMPLES
-  $ wp-spin deploy
-
-  $ wp-spin deploy production
-
-  $ wp-spin deploy staging --provider=wpengine
-
-  $ wp-spin deploy --provider=ssh --host=example.com --path=/var/www/html
-
-  $ wp-spin deploy --db --media
-
-  $ wp-spin deploy --dry-run
-```
-
-_See code: [src/commands/deploy.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/deploy.ts)_
 
 ## `wp-spin init NAME`
 

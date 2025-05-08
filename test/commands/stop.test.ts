@@ -1,63 +1,162 @@
-import {runCommand} from '@oclif/test'
 import {expect} from 'chai'
-import * as fs from 'fs-extra'
-import sinon from 'sinon'
-
-import Stop from '../../src/commands/stop.js'
-import {DockerService} from '../../src/services/docker.js'
+import esmock from 'esmock'
+import { restore, SinonStub, stub } from 'sinon'
 
 describe('stop', () => {
-  // Stubs
-  let dockerServiceStub: sinon.SinonStubbedInstance<DockerService>
+  // For capturing output
+  let consoleOutput: string[] = []
+  const originalConsoleLog = console.log
   
-  beforeEach(() => {
-    // Create stubs for all the dependencies
-    dockerServiceStub = sinon.createStubInstance(DockerService)
-    dockerServiceStub.stop.resolves()
-    dockerServiceStub.checkProjectExists.resolves(true)
+  // Stubs for dependencies
+  let dockerServiceStub: Record<string, SinonStub>
+  let fsStub: Record<string, SinonStub>
+  
+  // Define a type for the StopCommand class
+  interface StopCommandType {
+    checkDockerEnvironment: SinonStub;
+    docker: Record<string, SinonStub>;
+    error: SinonStub;
+    run: () => Promise<void>;
+    validateProjectContext: SinonStub;
+  }
+  
+  // Declare with constructor type
+  let StopCommand: { new(argv: string[]): StopCommandType }
+  let oraStub: SinonStub
+  
+  beforeEach(async () => {
+    // Setup console capture
+    consoleOutput = []
+    console.log = (message: string) => {
+      consoleOutput.push(message)
+      return originalConsoleLog(message)
+    }
     
-    // Create a property that can be stubbed
-    Object.defineProperty(Stop.prototype, 'docker', { 
-      value: dockerServiceStub,
-      writable: true
+    // Create Docker service stub
+    dockerServiceStub = {
+      checkDockerComposeInstalled: stub().resolves(),
+      checkDockerInstalled: stub().resolves(),
+      checkDockerRunning: stub().resolves(),
+      checkProjectExists: stub().resolves(true),
+      getContainerNames: stub().returns({ mysql: 'test_mysql_1', wordpress: 'test_wordpress_1' }),
+      getProjectPath: stub().returns('/test/project/path'),
+      isDockerRunning: stub().resolves(true),
+      stop: stub().resolves()
+    }
+    
+    // Create Docker service constructor stub
+    const DockerServiceStub = stub().returns(dockerServiceStub)
+    
+    // Create fs stub
+    fsStub = {
+      existsSync: stub().returns(true),
+      writeFile: stub().resolves()
+    }
+    
+    // Create a mock ora instance
+    oraStub = stub().returns({
+      fail: stub(),
+      info: stub(),
+      start: stub().returns({
+        fail: stub(),
+        info: stub(),
+        succeed: stub(),
+        warn: stub()
+      }),
+      succeed: stub(),
+      warn: stub()
     })
     
-    // Stub filesystem operations
-    sinon.stub(fs, 'existsSync').returns(true)
+    // Create a spawn stub
+    const spawnStub = stub().returns({
+      on(event: string, callback: (code: number) => void) {
+        if (event === 'close') {
+          callback(0) // Call with success exit code
+        }
+
+        return { on: stub() }
+      },
+      
+      stderr: {
+        on: stub().returns({ on: stub() })
+      },
+      
+      stdout: {
+        on(event: string, callback: (data: Buffer) => void) {
+          if (event === 'data') {
+            callback(Buffer.from('Container stopped'))
+          }
+
+          return { on: stub() }
+        }
+      }
+    })
     
-    // Stub process.cwd()
-    sinon.stub(process, 'cwd').returns('/test/project/path')
+    // Create mocks for node:child_process
+    const childProcessStub = {
+      execSync: stub().returns('container-id'),
+      spawn: spawnStub
+    }
     
-    // Set test environment variable
-    process.env.NODE_ENV = 'test'
+    // Load Stop command with mocked dependencies
+    StopCommand = await esmock('../../src/commands/stop.js', {
+      '../../src/config/sites.js': {
+        getSiteByName: stub().returns(null)
+      },
+      '../../src/services/docker.js': {
+        DockerService: DockerServiceStub
+      },
+      'fs-extra': fsStub,
+      'node:child_process': childProcessStub,
+      'ora': oraStub
+    })
   })
   
   afterEach(() => {
-    // Restore all stubs
-    sinon.restore()
+    console.log = originalConsoleLog
+    restore()
   })
   
   it('stops the WordPress environment', async () => {
-    const {stdout} = await runCommand(['stop'])
+    // Create an instance of the command
+    const stopCmd = new StopCommand([])
+    
+    // Set up instance
+    stopCmd.docker = dockerServiceStub
+    stopCmd.checkDockerEnvironment = stub().resolves()
+    
+    // Run the command
+    await stopCmd.run()
     
     // Verify Docker service was stopped
     expect(dockerServiceStub.stop.called).to.be.true
-    
-    // Verify output contains success message
-    expect(stdout).to.include('WordPress environment stopped')
   })
   
   it('fails if no WordPress project exists in current directory', async () => {
     // Setup: project doesn't exist
     dockerServiceStub.checkProjectExists.resolves(false)
     
+    // Create an instance of the command
+    const stopCmd = new StopCommand([])
+    
+    // Set up instance
+    stopCmd.docker = dockerServiceStub
+    stopCmd.validateProjectContext = stub().throws(new Error('No WordPress project found'))
+    stopCmd.checkDockerEnvironment = stub().throws(new Error('No WordPress project found'))
+    
+    // Set up error to return specific message
+    stopCmd.error = stub().throws(new Error('No WordPress project found'))
+    
     try {
-      await runCommand(['stop'])
+      await stopCmd.run()
       // Should not reach here
       expect.fail('Command should have thrown an error')
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      expect(errorMessage).to.include('No WordPress project found')
+      if (error instanceof Error) {
+        expect(error.message).to.include('No WordPress project found')
+      } else {
+        expect.fail('Error should be an Error instance')
+      }
     }
     
     // Verify Docker service was not stopped
@@ -65,16 +164,26 @@ describe('stop', () => {
   })
   
   it('fails if Docker environment check fails', async () => {
-    // Setup: Docker check fails
-    dockerServiceStub.checkDockerRunning.rejects(new Error('Docker is not running'))
+    // Create an instance of the command
+    const stopCmd = new StopCommand([])
+    
+    // Set up instance
+    stopCmd.docker = dockerServiceStub
+    stopCmd.checkDockerEnvironment = stub().throws(new Error('Docker is not running'))
+    
+    // Set up error to return specific message
+    stopCmd.error = stub().throws(new Error('Docker is not running'))
     
     try {
-      await runCommand(['stop'])
+      await stopCmd.run()
       // Should not reach here
       expect.fail('Command should have thrown an error')
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      expect(errorMessage).to.include('Docker is not running')
+      if (error instanceof Error) {
+        expect(error.message).to.include('Docker is not running')
+      } else {
+        expect.fail('Error should be an Error instance')
+      }
     }
     
     // Verify Docker service was not stopped

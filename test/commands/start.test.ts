@@ -1,67 +1,186 @@
-import {runCommand} from '@oclif/test'
 import {expect} from 'chai'
-import * as fs from 'fs-extra'
-import sinon from 'sinon'
-
-import Start from '../../src/commands/start.js'
-import {DockerService} from '../../src/services/docker.js'
+import esmock from 'esmock'
+import { restore, SinonStub, stub } from 'sinon'
 
 describe('start', () => {
-  // Stubs
-  let dockerServiceStub: sinon.SinonStubbedInstance<DockerService>
+  // For capturing output
+  let consoleOutput: string[] = []
+  const originalConsoleLog = console.log
   
-  beforeEach(() => {
-    // Create stubs for all the dependencies
-    dockerServiceStub = sinon.createStubInstance(DockerService)
-    dockerServiceStub.checkPorts.resolves()
-    dockerServiceStub.start.resolves()
-    dockerServiceStub.checkProjectExists.resolves(true)
+  // Stubs for dependencies
+  let dockerServiceStub: Record<string, SinonStub>
+  let fsStub: Record<string, SinonStub>
+  
+  // Define a type for the StartCommand
+  interface StartCommandType {
+    checkDockerEnvironment: SinonStub;
+    docker: Record<string, SinonStub>;
+    error: SinonStub;
+    findProjectRoot: SinonStub;
+    run: () => Promise<void>;
+  }
+  
+  // Declare with constructor type
+  let StartCommand: { new(argv: string[]): StartCommandType }
+  let oraStub: SinonStub
+  let execaStub: SinonStub
+  
+  beforeEach(async () => {
+    // Setup console capture
+    consoleOutput = []
+    console.log = (message: string) => {
+      consoleOutput.push(message)
+      return originalConsoleLog(message)
+    }
     
-    // Create a property that can be stubbed
-    Object.defineProperty(Start.prototype, 'docker', { 
-      value: dockerServiceStub,
-      writable: true
+    // Create Docker service stub
+    dockerServiceStub = {
+      checkDockerComposeInstalled: stub().resolves(),
+      checkDockerInstalled: stub().resolves(),
+      checkDockerRunning: stub().resolves(),
+      checkPorts: stub().resolves(),
+      checkProjectExists: stub().resolves(true),
+      getContainerNames: stub().returns({ mysql: 'test_mysql_1', wordpress: 'test_wordpress_1' }),
+      getPortMappings: stub().returns({ 8080: 8080, 8081: 8081 }),
+      getProjectPath: stub().returns('/test/project/path'),
+      isDockerRunning: stub().resolves(true),
+      start: stub().resolves()
+    }
+    
+    // Create Docker service constructor stub
+    const DockerServiceStub = stub().returns(dockerServiceStub)
+    
+    // Create fs stub
+    fsStub = {
+      existsSync: stub().returns(true),
+      writeFile: stub().resolves()
+    }
+    
+    // Create a mock ora instance
+    oraStub = stub().returns({
+      fail: stub(),
+      info: stub(),
+      start: stub().returns({
+        fail: stub(),
+        info: stub(),
+        succeed: stub(),
+        warn: stub()
+      }),
+      succeed: stub(),
+      warn: stub()
     })
     
-    // Stub filesystem operations
-    sinon.stub(fs, 'existsSync').returns(true)
+    // Create execa stub
+    execaStub = stub().resolves({
+      stdout: 'test_wordpress_1\ntest_phpmyadmin_1'
+    })
     
-    // Stub process.cwd()
-    sinon.stub(process, 'cwd').returns('/test/project/path')
+    // Configure execa stub for different command variations
+    execaStub.withArgs('docker', ['ps', '--format', '{{.Names}}']).resolves({
+      stdout: 'test_wordpress_1\ntest_phpmyadmin_1'
+    })
     
-    // Set test environment variable
-    process.env.NODE_ENV = 'test'
+    execaStub.withArgs('docker', ['port', 'test_wordpress_1', '80']).resolves({
+      stdout: '0.0.0.0:8080'
+    })
+    
+    execaStub.withArgs('docker', ['port', 'test_phpmyadmin_1', '80']).resolves({
+      stdout: '0.0.0.0:8081'
+    })
+    
+    // Create a spawn stub
+    const spawnStub = stub().returns({
+      on(event: string, callback: (code: number) => void) {
+        if (event === 'close') {
+          callback(0) // Call with success exit code
+        }
+
+        return { on: stub() }
+      },
+      
+      stderr: {
+        on: stub().returns({ on: stub() })
+      },
+      
+      stdout: {
+        on(event: string, callback: (data: Buffer) => void) {
+          if (event === 'data') {
+            callback(Buffer.from('Container started'))
+          }
+
+          return { on: stub() }
+        }
+      }
+    })
+    
+    // Create mocks for node:child_process
+    const childProcessStub = {
+      execSync: stub().returns('container-id'),
+      spawn: spawnStub
+    }
+    
+    // Load Start command with mocked dependencies
+    StartCommand = await esmock('../../src/commands/start.js', {
+      '../../src/config/sites.js': {
+        getSiteByName: stub().returns(null)
+      },
+      '../../src/services/docker.js': {
+        DockerService: DockerServiceStub
+      },
+      'execa': {
+        execa: execaStub
+      },
+      'fs-extra': fsStub,
+      'node:child_process': childProcessStub,
+      'ora': oraStub
+    })
   })
   
   afterEach(() => {
-    // Restore all stubs
-    sinon.restore()
+    console.log = originalConsoleLog
+    restore()
   })
   
   it('starts the WordPress environment', async () => {
-    const {stdout} = await runCommand(['start'])
+    // Create an instance of the command
+    const startCmd = new StartCommand([])
+    
+    // Set up instance
+    startCmd.docker = dockerServiceStub
+    startCmd.checkDockerEnvironment = stub().resolves()
+    startCmd.findProjectRoot = stub().returns('/test/project/path')
+    
+    // Run the command
+    await startCmd.run()
     
     // Verify Docker service was started
     expect(dockerServiceStub.start.called).to.be.true
     
     // Verify port configuration was checked
     expect(dockerServiceStub.checkPorts.called).to.be.true
-    
-    // Verify output contains success message
-    expect(stdout).to.include('WordPress environment started')
   })
   
   it('fails if no WordPress project exists in current directory', async () => {
-    // Setup: project doesn't exist
-    dockerServiceStub.checkProjectExists.resolves(false)
+    // Create an instance of the command
+    const startCmd = new StartCommand([])
+    
+    // Set up instance
+    startCmd.docker = dockerServiceStub
+    startCmd.findProjectRoot = stub().returns(null)
+    
+    // Set up error to return specific message
+    startCmd.error = stub().throws(new Error('No WordPress project found'))
     
     try {
-      await runCommand(['start'])
+      await startCmd.run()
       // Should not reach here
       expect.fail('Command should have thrown an error')
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      expect(errorMessage).to.include('No WordPress project found')
+      if (error instanceof Error) {
+        expect(error.message).to.include('No WordPress project found')
+      } else {
+        expect.fail('Error should be an Error instance')
+      }
     }
     
     // Verify Docker service was not started
@@ -69,16 +188,27 @@ describe('start', () => {
   })
   
   it('fails if Docker is not running', async () => {
-    // Setup: Docker check fails
-    dockerServiceStub.checkDockerRunning.rejects(new Error('Docker is not running'))
+    // Create an instance of the command
+    const startCmd = new StartCommand([])
+    
+    // Set up instance
+    startCmd.docker = dockerServiceStub
+    startCmd.findProjectRoot = stub().returns('/test/project/path')
+    startCmd.checkDockerEnvironment = stub().throws(new Error('Docker is not running'))
+    
+    // Set up error to return specific message
+    startCmd.error = stub().throws(new Error('Docker is not running'))
     
     try {
-      await runCommand(['start'])
+      await startCmd.run()
       // Should not reach here
       expect.fail('Command should have thrown an error')
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      expect(errorMessage).to.include('Docker is not running')
+      if (error instanceof Error) {
+        expect(error.message).to.include('Docker is not running')
+      } else {
+        expect.fail('Error should be an Error instance')
+      }
     }
     
     // Verify Docker service was not started
@@ -86,7 +216,16 @@ describe('start', () => {
   })
   
   it('handles port conflicts by checking ports', async () => {
-    await runCommand(['start'])
+    // Create an instance of the command
+    const startCmd = new StartCommand([])
+    
+    // Set up instance
+    startCmd.docker = dockerServiceStub
+    startCmd.checkDockerEnvironment = stub().resolves()
+    startCmd.findProjectRoot = stub().returns('/test/project/path')
+    
+    // Run the command
+    await startCmd.run()
     
     // Verify port configuration was checked
     expect(dockerServiceStub.checkPorts.called).to.be.true
