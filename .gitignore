@@ -32,7 +32,6 @@ tsconfig.tsbuildinfo
 oclif.manifest.json
 yarn.lock
 pnpm-lock.yaml
-package-lock.json
 
 # WordPress specific
 wordpress/
