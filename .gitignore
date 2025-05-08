@@ -22,7 +22,6 @@ typescript-errors.log
 /tmp
 *.tgz
 tsconfig.tsbuildinfo
-/bin
 
 # Dependencies
 /node_modules
