@@ -1,0 +1,140 @@
+import {runCommand} from '@oclif/test'
+import {expect} from 'chai'
+import * as execaModule from 'execa'
+import * as fs from 'fs-extra'
+import inquirer from 'inquirer'
+import sinon from 'sinon'
+
+import Deploy from '../../src/commands/deploy.js'
+import {DockerService} from '../../src/services/docker.js'
+
+describe('deploy', () => {
+  // Stubs
+  let dockerServiceStub: sinon.SinonStubbedInstance<DockerService>
+  let execaStub: sinon.SinonStub
+  let fsStub: sinon.SinonStub
+  let inquirerStub: sinon.SinonStub
+  
+  beforeEach(() => {
+    // Create stubs for all the dependencies
+    dockerServiceStub = sinon.createStubInstance(DockerService)
+    dockerServiceStub.checkProjectExists.resolves(true)
+    
+    // Create a property that can be stubbed
+    Object.defineProperty(Deploy.prototype, 'docker', { 
+      value: dockerServiceStub,
+      writable: true
+    })
+    
+    // Stub filesystem operations
+    fsStub = sinon.stub(fs, 'existsSync').returns(false) // Default: no config file
+    sinon.stub(fs, 'readJson').resolves({
+      default: {
+        host: 'example.com',
+        path: '/var/www/html',
+        provider: 'ssh'
+      },
+      production: {
+        host: 'production.example.com',
+        provider: 'wpengine'
+      }
+    })
+    
+    // Stub execa with a minimal implementation
+    execaStub = sinon.stub(execaModule, 'execa')
+    
+    // Add response for docker info
+    execaStub.withArgs('docker', ['info']).resolves({
+      command: 'docker info',
+      exitCode: 0,
+      failed: false,
+      stderr: '',
+      stdout: 'mock output'
+    })
+    
+    // Default for any other execa calls
+    execaStub.callsFake(() => Promise.resolve({
+      command: 'mock command',
+      exitCode: 0,
+      failed: false,
+      stderr: '',
+      stdout: 'success'
+    }))
+    
+    // Stub inquirer prompts to always confirm deployments
+    inquirerStub = sinon.stub(inquirer, 'prompt').resolves({ confirm: true })
+    
+    // @ts-expect-error - accessing private methods for testing
+    sinon.stub(Deploy.prototype, 'executeDeployment').resolves()
+    
+    // Set test environment variable
+    process.env.NODE_ENV = 'test'
+  })
+  
+  afterEach(() => {
+    // Restore all stubs
+    sinon.restore()
+  })
+  
+  it('deploys with default SSH provider', async () => {
+    const {stdout} = await runCommand(['deploy', '--host=test.com', '--path=/var/www/html'])
+    
+    // Verify executeDeployment was called
+    // @ts-expect-error - accessing private methods for testing
+    expect(Deploy.prototype.executeDeployment).to.have.been.called
+    
+    // Verify output
+    expect(stdout).to.include('Deployment plan')
+  })
+  
+  it('loads configuration from deploy.config.json', async () => {
+    // Setup: config file exists
+    fsStub.returns(true)
+    
+    const {stdout} = await runCommand(['deploy'])
+    
+    // Verify configuration is loaded
+    expect(fs.readJson).to.have.been.called
+    
+    // Verify output
+    expect(stdout).to.include('Deployment configuration loaded')
+  })
+  
+  it('loads destination-specific configuration', async () => {
+    // Setup: config file exists
+    fsStub.returns(true)
+    
+    const {stdout} = await runCommand(['deploy', 'production'])
+    
+    // Verify configuration is loaded
+    expect(fs.readJson).to.have.been.called
+    
+    // Verify output contains production-specific info
+    expect(stdout).to.include('production configuration loaded')
+  })
+  
+  it('handles dry-run flag correctly', async () => {
+    const {stdout} = await runCommand(['deploy', '--dry-run'])
+    
+    // Verify executeDeployment was not called in dry run mode
+    // @ts-expect-error - accessing private methods for testing
+    expect(Deploy.prototype.executeDeployment).to.not.have.been.called
+    
+    // Verify output
+    expect(stdout).to.include('Dry run - no actual deployment will be performed')
+  })
+  
+  it('cancels deployment when user rejects confirmation', async () => {
+    // Setup: user rejects confirmation
+    inquirerStub.resolves({ confirm: false })
+    
+    const {stdout} = await runCommand(['deploy'])
+    
+    // Verify executeDeployment was not called
+    // @ts-expect-error - accessing private methods for testing
+    expect(Deploy.prototype.executeDeployment).to.not.have.been.called
+    
+    // Verify output
+    expect(stdout).to.include('Deployment cancelled')
+  })
+}) 

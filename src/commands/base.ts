@@ -1,12 +1,12 @@
 import { Command, Flags } from '@oclif/core';
+import chalk from 'chalk';
 import { execSync, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import path from 'node:path';
-import chalk from 'chalk';
-import debugFactory from 'debug';
+
+import { getSiteByName } from '../config/sites.js';
 import { IDockerService } from '../services/docker-interface.js';
 import { DockerService } from '../services/docker.js';
-import { getSiteByName } from '../config/sites.js';
 
 export const baseFlags = {
   site: Flags.string({
@@ -18,47 +18,14 @@ export const baseFlags = {
 
 export abstract class BaseCommand extends Command {
   static baseFlags = baseFlags;
-
-  /**
-   * Debug logger
-   */
-  protected debugLogger!: debugFactory.Debugger;
-
+/**
+ * Debug logger
+ */
+  protected debugLogger!: (...args: unknown[]) => void;
   /**
    * Docker service instance
    */
   protected docker!: IDockerService;
-
-  /**
-   * Initialize the command
-   */
-  public async init(): Promise<void> {
-    await super.init();
-    const { flags } = await this.parse(this.constructor as typeof Command);
-    
-    // Initialize the debugger
-    this.debugLogger = debugFactory('wp-spin:base');
-
-    try {
-      // Resolve the site path
-      const resolvedPath = this.resolveSitePath(flags.site);
-
-      
-      // Pass this command instance to DockerService
-      this.docker = new DockerService(resolvedPath, this);
-    } catch (error) {
-      this.prettyError(error instanceof Error ? error : new Error(String(error)));
-      this.exit(1);
-    }
-  }
-
-  /**
-   * Execute the command
-   */
-  public async run(): Promise<void> {
-    // this is a base class designed to be extended
-    // so this method doesn't do anything
-  }
 
   /**
    * Check if Docker is installed and running
@@ -88,13 +55,6 @@ export abstract class BaseCommand extends Command {
       
       return false;
     }
-  }
-
-  /**
-   * Check if a file or directory exists
-   */
-  protected existsSync(path: string): boolean {
-    return fs.existsSync(path);
   }
 
   /**
@@ -131,6 +91,13 @@ export abstract class BaseCommand extends Command {
   }
 
   /**
+   * Check if a file or directory exists
+   */
+  protected existsSync(path: string): boolean {
+    return fs.existsSync(path);
+  }
+
+  /**
    * Find a free port starting from the original port + 1
    */
   protected findFreePort(startPort: number): number {
@@ -143,7 +110,6 @@ export abstract class BaseCommand extends Command {
    * Find project root by walking up the directory tree
    */
   protected findProjectRoot(startPath?: string): null | string {
-
     let dockerPath: string | undefined;
     if (this.docker) {
       dockerPath = this.docker.getProjectPath();
@@ -152,7 +118,6 @@ export abstract class BaseCommand extends Command {
     // Force use of Docker service path if it exists, otherwise use startPath, otherwise use cwd
     const effectiveStartPath = dockerPath || startPath || process.cwd();
     let currentPath = effectiveStartPath;
-
     
     // Walk up the directory tree
     while (currentPath !== path.parse(currentPath).root) {
@@ -194,6 +159,28 @@ export abstract class BaseCommand extends Command {
   }
 
   /**
+   * Initialize the command
+   */
+  public async init(): Promise<void> {
+    await super.init();
+    const { flags } = await this.parse(this.constructor as typeof Command);
+    
+    // Initialize the debugger without using debugFactory
+    this.debugLogger = console.debug;
+
+    try {
+      // Resolve the site path
+      const resolvedPath = this.resolveSitePath(flags.site);
+      
+      // Pass this command instance to DockerService
+      this.docker = new DockerService(resolvedPath, this);
+    } catch (error) {
+      this.prettyError(error instanceof Error ? error : new Error(String(error)));
+      this.exit(1);
+    }
+  }
+
+  /**
    * Check if the WordPress container is running
    */
   protected async isWordPressRunning(autoExit = true): Promise<boolean> {
@@ -218,12 +205,11 @@ export abstract class BaseCommand extends Command {
       return false;
     }
   }
-  
+
   /**
    * Check if directory is a valid wp-spin project
    */
   protected isWpSpinProject(dir: string): boolean {
-    
     if (!dir) {
       return false;
     }
@@ -231,7 +217,6 @@ export abstract class BaseCommand extends Command {
     const dockerComposePath = path.join(dir, 'docker-compose.yml');
     
     if (!fs.existsSync(dockerComposePath)) {
-
       return false;
     }
 
@@ -245,7 +230,7 @@ export abstract class BaseCommand extends Command {
     // Cast to unknown first, then to Record to avoid type errors
     const config = this.config as unknown as Record<string, unknown>;
     const debug = config.debug === '1';
-    if (debug) {
+    if (debug && typeof this.debugLogger === 'function') {
       this.debugLogger(message);
     }
   }
@@ -262,7 +247,6 @@ export abstract class BaseCommand extends Command {
    */
   protected resolveSitePath(sitePath?: string): string {
     if (sitePath) {
-      
       // First, check if sitePath is a registered site name
       try {
         const site = getSiteByName(sitePath);
@@ -310,5 +294,13 @@ export abstract class BaseCommand extends Command {
     this.prettyError(new Error('No WordPress project found in this directory or any parent directory. Make sure you are inside a wp-spin project or specify a valid site path with --site.'));
     this.exit(1);
     return process.cwd(); // This line will never be reached due to this.exit(1) above
+  }
+
+  /**
+   * Execute the command
+   */
+  public async run(): Promise<void> {
+    // this is a base class designed to be extended
+    // so this method doesn't do anything
   }
 }

@@ -11,7 +11,7 @@ import { execa } from 'execa';
 import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import ora from 'ora';
-import inquirer from 'inquirer';
+import { createPromptModule } from 'inquirer';
 import path from 'node:path';
 
 import { BaseCommand } from './base.js';
@@ -87,8 +87,7 @@ export default class Share extends BaseCommand {
     }),
   };
   static hidden = false;
-  
-  private currentNgrokUrl: string = '';
+private currentNgrokUrl: string = '';
   private flags: ShareFlags = {
     debug: false,
     fixurl: true,
@@ -245,7 +244,8 @@ export default class Share extends BaseCommand {
       
       // Ask if they want to try stopping the existing process
       try {
-        const responses = await inquirer.prompt([
+        const prompt = createPromptModule();
+        const responses = await prompt([
           {
             default: true,
             message: 'Would you like to attempt to stop the running ngrok process?',
@@ -390,45 +390,7 @@ export default class Share extends BaseCommand {
   }
 
   /**
-   * Processes a detected ngrok URL, fixes WordPress URL, and calls callbacks.
-   */
-  private async _processNgrokUrl(
-    url: string,
-    flags: ShareFlags, 
-    spinner: ReturnType<typeof ora>,
-    port: number,
-    wordpressContainer: string,
-    onUrlFound: (url: string, backupCreated: boolean) => void,
-    onComplete: () => void
-  ): Promise<void> {
-    let backupCreated = false;
-    try {
-      if (flags.fixurl && wordpressContainer) {
-        backupCreated = await this.fixWordPressUrl(wordpressContainer, url, spinner, flags.method);
-        onUrlFound(url, backupCreated);
-        this.displaySuccessMessage(url, port, spinner);
-      } else {
-        onUrlFound(url, false);
-        this.displaySuccessMessage(url, port, spinner);
-        if (!flags.fixurl && wordpressContainer) {
-          console.log('\n⚠️  NOTE: WordPress URLs have not been updated to work with ngrok.');
-          console.log('   If links don\'t work, try:');
-          console.log(chalk.blue('   wp-spin share --fixurl'));
-        }
-      }
-    } catch (error) {
-      onUrlFound(url, false);
-      this.displaySuccessMessage(url, port, spinner, true); // Show manual instructions on error
-      if (flags.debug) {
-        console.error('Error during _processNgrokUrl:', error);
-      }
-    } finally {
-      onComplete();
-    }
-  }
-
-  /**
-   * Handle ngrok process output to detect URLs
+   * Handle output from ngrok process to detect URL
    */
   private async handleNgrokOutput(
     ngrokProcess: ProcessWithStdio, 
@@ -439,29 +401,52 @@ export default class Share extends BaseCommand {
     onUrlFound: (url: string, backupCreated: boolean) => void,
     onComplete: () => void
   ): Promise<void> {
-    // Listen for ngrok output
-    ngrokProcess.stdout?.on('data', async (data: Buffer) => {
+    let foundUrl = false;
+    
+    // Set up interval to check ngrok API as a fallback
+    const checkInterval = this.setupUrlCheckInterval(
+      flags, spinner, port, wordpressContainer, foundUrl, onUrlFound, onComplete
+    );
+    
+    // Regex patterns to extract ngrok URL from console output
+    const urlPatterns = [
+      /https:\/\/([^.\s]+\.ngrok-free\.app|[^.\s]+\.ngrok\.io)/,
+      /Forwarding\s+.+?https:\/\/([^.\s]+\.ngrok-free\.app|[^.\s]+\.ngrok\.io)/
+    ];
+    
+    // Start displaying progress
+    spinner.text = 'Starting ngrok tunnel...';
+    
+    // Listen for stdout to capture ngrok URL
+    ngrokProcess.stdout?.on('data', (data: Buffer) => {
+      if (foundUrl) return; // Skip processing if URL already found
+      
+      // Parse output and look for ngrok URL
       const output = data.toString();
       
       if (flags.debug) {
-        console.log(`ngrok output: ${output}`);
+        console.log(output);
       }
       
-      // Look for different URL patterns in ngrok output
-      const urlPatterns = [
-        /url=https:\/\/([^\s]+)/,
-        /Forwarding\s+https:\/\/([^\s]+)\s+->/,
-        /Web Interface\s+http:\/\/([^\s]+)/
-      ];
+      // Check for URL in the output using our patterns
+      let detectedUrl: string | null = null;
       
+      // Find first matching URL pattern
       for (const pattern of urlPatterns) {
         const match = output.match(pattern);
         if (match && match[1]) {
-          const url = `https://${match[1]}`;
-          // Call the new helper method
-          await this._processNgrokUrl(url, flags, spinner, port, wordpressContainer, onUrlFound, onComplete);
-          break; // Exit loop once URL is processed
+          detectedUrl = `https://${match[1]}`;
+          break; // Exit the loop once we find a URL
         }
+      }
+      
+      // Process the detected URL outside the loop
+      if (detectedUrl && !foundUrl) {
+        foundUrl = true; // Mark as found to prevent duplicate processing
+        clearInterval(checkInterval); // Stop the API checking interval
+        
+        // Process the URL asynchronously (deliberately not awaited)
+        this.processNgrokUrl(detectedUrl, flags, spinner, port, wordpressContainer, onUrlFound, onComplete);
       }
     });
     
@@ -476,6 +461,53 @@ export default class Share extends BaseCommand {
         console.log(`ngrok error: ${error}`);
       }
     });
+  }
+
+  /**
+   * Processes a detected ngrok URL, fixes WordPress URL, and calls callbacks.
+   */
+  private async processNgrokUrl(
+    url: string,
+    flags: ShareFlags, 
+    spinner: ReturnType<typeof ora>,
+    port: number,
+    wordpressContainer: string,
+    onUrlFound: (url: string, backupCreated: boolean) => void,
+    onComplete: () => void
+  ): Promise<void> {
+    try {
+      // Set the current ngrok URL for later use in URL replacements
+      this.currentNgrokUrl = url;
+      
+      // Display basic success message immediately
+      spinner.succeed(`ngrok tunnel created at ${chalk.green(url)}`);
+      
+      let backupCreated = false;
+      
+      // Fix WordPress URLs if the option is enabled
+      if (flags.fixurl && wordpressContainer) {
+        try {
+          backupCreated = await this.fixWordPressUrl(wordpressContainer, url, spinner, flags.method);
+        } catch (error) {
+          if (flags.debug) {
+            console.error(`Error fixing WordPress URLs: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          // Show manual instructions if we couldn't fix it automatically
+          spinner.warn('Could not automatically configure WordPress URLs');
+          this.showManualConfigInstructions(spinner);
+        }
+      }
+      
+      // Call the onUrlFound callback with the URL and backup status
+      onUrlFound(url, backupCreated);
+      
+      // Complete the process
+      onComplete();
+    } catch (error) {
+      spinner.fail(`Error processing ngrok URL: ${error instanceof Error ? error.message : String(error)}`);
+      onComplete();
+    }
   }
 
   /**
@@ -517,7 +549,12 @@ export default class Share extends BaseCommand {
         const tunnels = JSON.parse(stdout);
         if (tunnels?.tunnels?.length > 0) {
           // Find the first https tunnel URL
-          const foundTunnel = tunnels.tunnels.find((tunnel: any) => 
+          interface NgrokTunnel {
+            public_url?: string;
+            // Other properties could be added as needed
+          }
+          
+          const foundTunnel = tunnels.tunnels.find((tunnel: NgrokTunnel) => 
             tunnel.public_url && tunnel.public_url.startsWith('https://')
           );
           if (foundTunnel) {
@@ -533,7 +570,8 @@ export default class Share extends BaseCommand {
 
       // If a URL was found in this interval, process it
       if (tunnelUrl) {
-         await this._processNgrokUrl(tunnelUrl, flags, spinner, port, wordpressContainer, onUrlFound, onComplete);
+        // Process the URL asynchronously (deliberately not awaited)
+        this.processNgrokUrl(tunnelUrl, flags, spinner, port, wordpressContainer, onUrlFound, onComplete);
       }
     }, 1000);
   }
@@ -940,6 +978,7 @@ wp option update siteurl '${ngrokUrl}' --allow-root
       if (this.flags.debug) {
           console.error(`Error getting WP port via docker-compose: ${error instanceof Error ? error.message : String(error)}`);
       }
+
       // In case of error (e.g., docker-compose not found, file missing), fall back to the default port
       return defaultPort;
     }
@@ -960,6 +999,7 @@ wp option update siteurl '${ngrokUrl}' --allow-root
         spinner.fail('Cannot restore config: Project path not determined.');
         return; 
     }
+
     if (DEBUG) console.log(`restoreWordPressConfig - projectPath: ${projectPath}`);
 
     const wpConfigPath = path.join(projectPath, 'wordpress', 'wp-config.php');
