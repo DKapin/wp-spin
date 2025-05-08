@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
-import fs from 'fs/promises';
-import { execSync } from 'child_process';
-import path from 'path';
+import { execSync } from 'node:child_process';
+import fs from 'node:fs/promises';
 
 // Files to fix
 const filesToFix = [
@@ -13,7 +12,7 @@ const filesToFix = [
 async function main() {
   console.log('🧹 Fixing common lint issues...');
   
-  for (const file of filesToFix) {
+  const processFiles = filesToFix.map(async (file) => {
     console.log(`Processing ${file}...`);
     
     try {
@@ -38,20 +37,24 @@ async function main() {
       await fs.writeFile(file, content);
       
       console.log(`✅ Fixed ${file}`);
-    } catch (error) {
-      console.error(`❌ Error fixing ${file}:`, error);
+    } catch {
+      console.error(`❌ Error fixing ${file}`);
     }
-  }
+  });
+  
+  // Wait for all files to be processed
+  await Promise.all(processFiles);
   
   // Run ESLint with fix
   try {
     console.log('\nRunning ESLint with --fix...');
     execSync('npx eslint --fix "src/**/*.ts" "test/**/*.ts"', { stdio: 'inherit' });
-  } catch (error) {
+  } catch {
     console.log('\n⚠️ ESLint found some issues that could not be automatically fixed.');
   }
   
   console.log('\n✅ Linting fixes applied! Some manual fixes may still be needed.');
 }
 
-main().catch(console.error); 
+// Use top-level await instead of promise chain
+await main(); 

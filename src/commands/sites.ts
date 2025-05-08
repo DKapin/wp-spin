@@ -22,10 +22,8 @@ export default class Sites extends Command {
       required: false,
     }),
   };
-
-  static description = 'Manage WordPress site aliases';
-
-  static examples = [
+static description = 'Manage WordPress site aliases';
+static examples = [
     '$ wp-spin sites list',
     '$ wp-spin sites name my-site ./path/to/site',
     '$ wp-spin sites remove my-site',
@@ -79,6 +77,52 @@ export default class Sites extends Command {
   }
   
   /**
+   * Check if a file or directory exists (re-implemented)
+   */
+  private _existsSync(checkPath: string): boolean {
+    return fs.existsSync(checkPath);
+  }
+
+  /**
+   * Check if directory is a valid wp-spin project (re-implemented)
+   */
+  private _isWpSpinProject(dir: string): boolean {
+    if (!dir) {
+      return false;
+    }
+
+    const dockerComposePath = path.join(dir, 'docker-compose.yml');
+    return fs.existsSync(dockerComposePath);
+  }
+
+  /**
+   * Resolve site path (re-implemented)
+   */
+  private _resolveSitePath(sitePathInput: string): string {
+    if (!sitePathInput) {
+      // This shouldn't happen if called from name/update actions which require path
+      throw new Error('Site path cannot be empty.');
+    }
+
+    // Check if path is absolute or relative
+    if (path.isAbsolute(sitePathInput)) {
+      if (!this._isWpSpinProject(sitePathInput)) {
+        throw new Error(`${sitePathInput} is not a valid wp-spin project.`);
+      }
+
+      return sitePathInput;
+    }
+    
+    // Relative path
+    const absolutePath = path.resolve(process.cwd(), sitePathInput);
+    if (!this._isWpSpinProject(absolutePath)) {
+      throw new Error(`${absolutePath} is not a valid wp-spin project.`);
+    }
+
+    return absolutePath;
+  }
+
+  /**
    * List all registered sites
    */
   private async listSites(): Promise<void> {
@@ -100,48 +144,6 @@ export default class Sites extends Command {
     }
     
     console.log(`Use ${chalk.blue('wp-spin start --site=<n>')} to start a specific site.`);
-  }
-  
-  /**
-   * Check if a file or directory exists (re-implemented)
-   */
-  private _existsSync(checkPath: string): boolean {
-    return fs.existsSync(checkPath);
-  }
-
-  /**
-   * Check if directory is a valid wp-spin project (re-implemented)
-   */
-  private _isWpSpinProject(dir: string): boolean {
-    if (!dir) {
-      return false;
-    }
-    const dockerComposePath = path.join(dir, 'docker-compose.yml');
-    return fs.existsSync(dockerComposePath);
-  }
-
-  /**
-   * Resolve site path (re-implemented)
-   */
-  private _resolveSitePath(sitePathInput: string): string {
-    if (!sitePathInput) {
-      // This shouldn't happen if called from name/update actions which require path
-      throw new Error('Site path cannot be empty.');
-    }
-    // Check if path is absolute or relative
-    if (path.isAbsolute(sitePathInput)) {
-      if (!this._isWpSpinProject(sitePathInput)) {
-        throw new Error(`${sitePathInput} is not a valid wp-spin project.`);
-      }
-      return sitePathInput;
-    }
-    
-    // Relative path
-    const absolutePath = path.resolve(process.cwd(), sitePathInput);
-    if (!this._isWpSpinProject(absolutePath)) {
-      throw new Error(`${absolutePath} is not a valid wp-spin project.`);
-    }
-    return absolutePath;
   }
   
   /**
@@ -175,6 +177,7 @@ export default class Sites extends Command {
     const existingPath = getSiteByPath(resolvedPath);
     if (existingPath) {
       spinner.warn(`This site path is already registered with name: ${existingPath.name}`);
+      
       console.log(`You can already use ${chalk.blue(`--site=${existingPath.name}`)} with any wp-spin command.`);
       console.log(`If you want to change the name, remove the existing name first:`);
       console.log(`  ${chalk.blue(`wp-spin sites remove ${existingPath.name}`)}`);
@@ -188,9 +191,11 @@ export default class Sites extends Command {
     
     if (success) {
       spinner.succeed(`Site "${name}" named successfully`);
+      
       console.log(`You can now use ${chalk.blue(`--site=${name}`)} with any wp-spin command.`);
     } else {
       spinner.fail(`Failed to name site "${name}"`);
+      
       const existingSite = getSiteByName(name);
       if (existingSite) {
         console.log(`A site with the name "${name}" already exists at: ${existingSite.path}`);
@@ -260,6 +265,7 @@ export default class Sites extends Command {
     const existingPath = getSiteByPath(resolvedPath);
     if (existingPath && existingPath.name !== name) {
       spinner.warn(`This site path is already registered with name: ${existingPath.name}`);
+      
       console.log(`You can already use ${chalk.blue(`--site=${existingPath.name}`)} to access this site.`);
       console.log(`If you want to update to this path, please remove the existing name first:`);
       console.log(`  ${chalk.blue(`wp-spin sites remove ${existingPath.name}`)}`);
@@ -271,6 +277,7 @@ export default class Sites extends Command {
     
     if (success) {
       spinner.succeed(`Site "${name}" updated successfully`);
+      
       console.log(`You can now use ${chalk.blue(`--site=${name}`)} with any wp-spin command.`);
     } else {
       spinner.fail(`Failed to update site "${name}"`);

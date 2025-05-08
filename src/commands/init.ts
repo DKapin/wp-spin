@@ -68,6 +68,84 @@ protected docker: DockerService;
   // Methods in alphabetical order to satisfy perfectionist/sort-classes
   
   /**
+   * Ensures Docker is installed and running correctly
+   */
+  protected async ensureDockerEnvironment(): Promise<void> {
+    try {
+      // Check system platform and architecture
+      await this.checkSystem();
+      
+      await this.docker.checkDockerInstalled();
+      await this.docker.checkDockerRunning();
+      await this.docker.checkDockerComposeInstalled();
+      await this.docker.checkDiskSpace();
+      await this.docker.checkMemory();
+    } catch (error) {
+      if (error instanceof Error) {
+        this.error(error.message);
+      }
+
+      this.error('Failed to verify Docker environment');
+    }
+  }
+  
+  /**
+   * Main run method for the command
+   */
+  async run(): Promise<void> {
+    const { args, flags } = await this.parse(Init);
+    const { name } = args;
+    
+    // Store the WordPress version from flag
+    this.wordpressVersion = flags['wordpress-version'] || 'latest';
+
+    const spinner = ora();
+    const projectPath = join(process.cwd(), name);
+
+    try {
+      // Show WordPress version being used
+      const versionDisplay = this.wordpressVersion === 'latest' ? 'latest version' : `version ${this.wordpressVersion}`;
+      spinner.info(`Initializing WordPress project with ${versionDisplay}`);
+      
+      await this.prepareProjectDirectory(projectPath, flags.force);
+      await this.ensureDockerEnvironment();
+      
+      // Initialize Docker service with new project path
+      this.docker = new DockerService(projectPath);
+      
+      // Set up WordPress source
+      const wordpressPath = join(projectPath, 'wordpress');
+      await this.setupWordpressSource(wordpressPath, flags as CommandFlags, projectPath);
+      
+      // Setup Docker environment
+      await this.setupDockerEnvironment(projectPath, wordpressPath);
+      
+      // Register site if name provided or use directory name
+      const siteName = flags['site-name'] || name;
+      const siteAdded = addSite(siteName, projectPath);
+      
+      if (siteAdded) {
+        spinner.succeed(`Site registered with name: ${siteName}`);
+        console.log(`You can now use ${chalk.blue(`--site=${siteName}`)} with any wp-spin command.`);
+      } else {
+        spinner.warn(`Site "${siteName}" already exists. Using existing name.`);
+        console.log(`To update, use ${chalk.blue(`wp-spin sites update ${siteName} ${projectPath}`)}`);
+      }
+      
+      // Display information to the user
+      await this.displayProjectInfo(projectPath, wordpressPath);
+
+    } catch (error) {
+      spinner.fail('Failed to initialize project');
+      if (error instanceof Error) {
+        this.error(error.message);
+      }
+
+      this.error('Failed to initialize project');
+    }
+  }
+  
+  /**
    * Builds Docker images for the WordPress project
    */
   private async buildDockerImages(projectPath: string): Promise<void> {
@@ -396,6 +474,12 @@ RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli
     && chmod +x wp-cli.phar \\
     && mv wp-cli.phar /usr/local/bin/wp
 
+# Configure PHP memory limits
+RUN echo "memory_limit = 256M" > /usr/local/etc/php/conf.d/memory-limit.ini \\
+    && echo "max_execution_time = 300" >> /usr/local/etc/php/conf.d/memory-limit.ini \\
+    && echo "post_max_size = 64M" >> /usr/local/etc/php/conf.d/memory-limit.ini \\
+    && echo "upload_max_filesize = 64M" >> /usr/local/etc/php/conf.d/memory-limit.ini
+
 # Verify WP-CLI installation
 RUN wp --info
 
@@ -515,15 +599,16 @@ FLUSH PRIVILEGES;
   /**
    * Displays information about the WordPress project after initialization
    */
-  private async displayProjectInfo(projectPath: string, wordpressPath: string): Promise<void> {
+  private async displayProjectInfo(projectPath: string, _wordpressPath: string): Promise<void> {
     const spinner = ora();
     
     try {
       // Get list of all containers in this project
       spinner.start('Getting project information...');
       
-      // Get WordPress port
-      const wpPort = 8080; // Default port
+      // Get WordPress port from Docker service
+      const portMappings = this.docker.getPortMappings();
+      const wpPort = portMappings[DEFAULT_PORTS.WORDPRESS] || DEFAULT_PORTS.WORDPRESS;
       
       // Get name of current directory
       const projectName = projectPath.split('/').pop() || 'wordpress-site';
@@ -552,7 +637,7 @@ FLUSH PRIVILEGES;
       console.log('   (You should change these after first login)');
       
       console.log('\n🎯 Next Steps:');
-      console.log('1. Browse to your WordPress site at ' + chalk.blue(wpUrl));
+      console.log(`1. Browse to your WordPress site at ${chalk.blue(wpUrl)}`);
       console.log('2. Complete the WordPress setup process');
       console.log('3. Install your favorite plugins and themes using ' + chalk.blue('wp-spin plugin --add <name>') + ' and ' + chalk.blue('wp-spin theme --add <name>'));
       
@@ -933,16 +1018,29 @@ desktop.ini
       // No source specified, download standard WordPress
       spinner.start(`Downloading WordPress ${this.wordpressVersion}...`);
       try {
-        // Download WordPress to a temporary directory
+        // Create a temporary directory for the download
         const tempDir = join(tmpdir(), `wp-${Date.now()}`);
         fs.mkdirSync(tempDir, { recursive: true });
+        
+        // Set PHP memory limit for WP-CLI
+        process.env.PHP_MEMORY_LIMIT = '512M';
         
         // Use WordPress version if specified
         const versionArg = this.wordpressVersion === 'latest' ? '' : `--version=${this.wordpressVersion}`;
         
-        // Download WordPress core
-        await execa('wp', ['core', 'download', versionArg, '--path=' + tempDir], {
-          stdio: 'pipe',
+        // Download WordPress core using WP-CLI with increased memory limit
+        await execa('wp', [
+          'core',
+          'download',
+          versionArg,
+          '--path=' + tempDir,
+          '--skip-content'
+        ], {
+          env: {
+            ...process.env,
+            PHP_MEMORY_LIMIT: '512M'
+          },
+          stdio: 'pipe'
         });
         
         // Copy WordPress files to our destination
@@ -1046,7 +1144,7 @@ desktop.ini
       // Continue despite error - we'll use the original config
     }
   }
-  
+
   /**
    * Validates a directory to check if it contains a valid WordPress installation
    */
@@ -1066,7 +1164,7 @@ desktop.ini
       isValid: issues.length === 0,
     };
   }
-  
+
   /**
    * Verifies WordPress setup after installation
    */
@@ -1157,84 +1255,6 @@ RewriteRule . /index.php [L]
     } catch (error) {
       console.error('Error verifying WordPress setup:', error);
       // Continue anyway - we've tried our best
-    }
-  }
-
-  /**
-   * Ensures Docker is installed and running correctly
-   */
-  protected async ensureDockerEnvironment(): Promise<void> {
-    try {
-      // Check system platform and architecture
-      await this.checkSystem();
-      
-      await this.docker.checkDockerInstalled();
-      await this.docker.checkDockerRunning();
-      await this.docker.checkDockerComposeInstalled();
-      await this.docker.checkDiskSpace();
-      await this.docker.checkMemory();
-    } catch (error) {
-      if (error instanceof Error) {
-        this.error(error.message);
-      }
-
-      this.error('Failed to verify Docker environment');
-    }
-  }
-
-  /**
-   * Main run method for the command
-   */
-  async run(): Promise<void> {
-    const { args, flags } = await this.parse(Init);
-    const { name } = args;
-    
-    // Store the WordPress version from flag
-    this.wordpressVersion = flags['wordpress-version'] || 'latest';
-
-    const spinner = ora();
-    const projectPath = join(process.cwd(), name);
-
-    try {
-      // Show WordPress version being used
-      const versionDisplay = this.wordpressVersion === 'latest' ? 'latest version' : `version ${this.wordpressVersion}`;
-      spinner.info(`Initializing WordPress project with ${versionDisplay}`);
-      
-      await this.prepareProjectDirectory(projectPath, flags.force);
-      await this.ensureDockerEnvironment();
-      
-      // Initialize Docker service with new project path
-      this.docker = new DockerService(projectPath);
-      
-      // Set up WordPress source
-      const wordpressPath = join(projectPath, 'wordpress');
-      await this.setupWordpressSource(wordpressPath, flags as CommandFlags, projectPath);
-      
-      // Setup Docker environment
-      await this.setupDockerEnvironment(projectPath, wordpressPath);
-      
-      // Register site if name provided or use directory name
-      const siteName = flags['site-name'] || name;
-      const siteAdded = addSite(siteName, projectPath);
-      
-      if (siteAdded) {
-        spinner.succeed(`Site registered with name: ${siteName}`);
-        console.log(`You can now use ${chalk.blue(`--site=${siteName}`)} with any wp-spin command.`);
-      } else {
-        spinner.warn(`Site "${siteName}" already exists. Using existing name.`);
-        console.log(`To update, use ${chalk.blue(`wp-spin sites update ${siteName} ${projectPath}`)}`);
-      }
-      
-      // Display information to the user
-      await this.displayProjectInfo(projectPath, wordpressPath);
-
-    } catch (error) {
-      spinner.fail('Failed to initialize project');
-      if (error instanceof Error) {
-        this.error(error.message);
-      }
-
-      this.error('Failed to initialize project');
     }
   }
 }

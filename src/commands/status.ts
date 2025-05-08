@@ -32,7 +32,7 @@ export default class Status extends BaseCommand {
       await this.checkDockerEnvironment();
       
       // Check container status
-      const { running, containers } = await this.getContainerStatus(projectRoot);
+      const { containers, running } = await this.getContainerStatus(projectRoot);
       
       if (running) {
         console.log(chalk.green('✓ WordPress environment is running'));
@@ -59,7 +59,7 @@ export default class Status extends BaseCommand {
     }
   }
   
-  private async getContainerStatus(projectPath: string): Promise<{running: boolean; containers: Array<{name: string; status: string; ports: string}>}> {
+  private async getContainerStatus(projectPath: string): Promise<{containers: Array<{name: string; ports: string; status: string}>; running: boolean}> {
     try {
       // Get project name from path
       const projectName = projectPath.split('/').pop() || 'wp-spin';
@@ -98,7 +98,7 @@ export default class Status extends BaseCommand {
     }
   }
   
-  private getPortsFromContainers(containers: Array<{name: string; status: string; ports: string}>): {wordpress: string; phpmyadmin: string} {
+  private getPortsFromContainers(containers: Array<{name: string; ports: string; status: string}>): {phpmyadmin: string; wordpress: string} {
     let wordpressPort = '8080';
     let phpmyadminPort = '8081';
     

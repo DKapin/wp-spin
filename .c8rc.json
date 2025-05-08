@@ -1,0 +1,23 @@
+{
+  "extension": [
+    ".ts"
+  ],
+  "exclude": [
+    "**/*.d.ts",
+    "test/**/*",
+    "dist/**/*",
+    "node_modules/**",
+    "coverage/**"
+  ],
+  "all": true,
+  "include": [
+    "src/**/*.ts"
+  ],
+  "reporter": [
+    "html",
+    "text",
+    "text-summary"
+  ],
+  "report-dir": "./coverage",
+  "sourceMap": true
+} 
