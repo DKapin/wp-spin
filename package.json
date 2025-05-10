@@ -6,7 +6,7 @@
   "bin": {
     "wp-spin": "./bin/run.js"
   },
-  "bugs": "https://github.com/Projects/wp-spinup-v2/issues",
+  "bugs": "https://github.com/danielkapin/wp-spin/issues",
   "dependencies": {
     "@oclif/core": "^4",
     "@oclif/plugin-help": "^6",
@@ -128,7 +128,8 @@
     "test:coverage-c8-init": "npm run build && NODE_OPTIONS=\"--no-deprecation --no-warnings --require ts-node/register\" npx c8 --reporter=html --reporter=text mocha --forbid-only \"test/commands/init.test.ts\"",
     "integration-test": "NODE_ENV=test USE_DOCKER_MOCK=true node integration-test.js",
     "test:coverage-integration": "npm run build && npx c8 --reporter=html --reporter=text npm run integration-test",
-    "test:combined-coverage": "npm run build && npx c8 --reporter=html --reporter=text --reporter=lcov --clean node integration-test.js && echo '\\n✅ Coverage report generated. Check the coverage directory.'"
+    "test:combined-coverage": "npm run build && npx c8 --reporter=html --reporter=text --reporter=lcov --clean node integration-test.js && echo '\\n✅ Coverage report generated. Check the coverage directory.'",
+    "prepublishOnly": "npm run build && npm run test:all"
   },
   "lint-staged": {
     "*.{ts,js}": [
@@ -159,5 +160,7 @@
     ]
   },
   "types": "./dist/index.d.ts",
-  "private": true
+  "publishConfig": {
+    "access": "public"
+  }
 }
