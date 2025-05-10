@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "author": "Daniel Kapin",
   "bin": {
-    "wp-spin": "./bin/run"
+    "wp-spin": "./bin/run.js"
   },
   "bugs": "https://github.com/Projects/wp-spinup-v2/issues",
   "dependencies": {
@@ -17,7 +17,8 @@
     "execa": "^9.5.2",
     "fs-extra": "^11.3.0",
     "inquirer": "^12.5.2",
-    "ora": "^8.2.0"
+    "ora": "^8.2.0",
+    "terminal-link": "^4.0.0"
   },
   "devDependencies": {
     "@eslint/compat": "^1",

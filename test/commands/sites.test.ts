@@ -18,6 +18,7 @@ describe('sites', () => {
   // Stubs for sites.js functions
   let sitesConfigStubs: {
     addSite: SinonStub;
+    getSiteByAlias: SinonStub;
     getSiteByName: SinonStub;
     getSiteByPath: SinonStub;
     getSites: SinonStub;
@@ -49,6 +50,7 @@ describe('sites', () => {
     // Sites Config Stubs
     sitesConfigStubs = {
       addSite: stub().returns(true),
+      getSiteByAlias: stub().returns(null),
       getSiteByName: stub().returns(null),
       getSiteByPath: stub().returns(null),
       getSites: stub().returns([]),
@@ -167,6 +169,66 @@ describe('sites', () => {
         expect(siteNameCall, `Should display site name: ${site.name}`).to.exist;
       }
     });
+
+    it('lists sites with multiple aliases correctly', async () => {
+      const testSites = [
+        { createdAt: new Date().toISOString(), name: 'site1', path: '/path/to/site1' },
+        { createdAt: new Date().toISOString(), name: 'alias1', path: '/path/to/site1' },
+        { createdAt: new Date().toISOString(), name: 'alias2', path: '/path/to/site1' }
+      ];
+      sitesConfigStubs.getSites.returns(testSites);
+      
+      const cmd = new MockedSites([], mockConfig) as MockedSitesInstance;
+      
+      cmd.parse = stub().resolves({
+        args: { action: 'list' },
+        flags: {}
+      });
+      
+      await cmd.run();
+      
+      // Verify that getSites was called
+      expect(sitesConfigStubs.getSites.called).to.be.true;
+      
+      // Check for aliases in console output
+      const aliasesCall = consoleLogStub.getCalls().find(call => 
+        call.args[0] && call.args[0].includes('Aliases:')
+      );
+      expect(aliasesCall, 'Should display aliases').to.exist;
+      if (aliasesCall) {
+        expect(aliasesCall.args[0]).to.include('site1, alias1, alias2');
+      }
+    });
+
+    it('automatically removes invalid sites', async () => {
+      const testSites = [
+        { createdAt: new Date().toISOString(), name: 'valid-site', path: '/path/to/valid' },
+        { createdAt: new Date().toISOString(), name: 'invalid-site', path: '/path/to/invalid' }
+      ];
+      sitesConfigStubs.getSites.returns(testSites);
+      
+      // Make existsSync return false for invalid site
+      fsStubs.existsSync.withArgs('/path/to/invalid').returns(false);
+      fsStubs.existsSync.withArgs('/path/to/valid').returns(true);
+      
+      const cmd = new MockedSites([], mockConfig) as MockedSitesInstance;
+      
+      cmd.parse = stub().resolves({
+        args: { action: 'list' },
+        flags: {}
+      });
+      
+      await cmd.run();
+      
+      // Verify that removeSite was called for invalid site
+      expect(sitesConfigStubs.removeSite.calledWith('invalid-site')).to.be.true;
+      
+      // Check for removal message
+      const removalMessage = consoleLogStub.getCalls().find(call => 
+        call.args[0] && call.args[0].includes('Removed 1 invalid site entries')
+      );
+      expect(removalMessage, 'Should display removal message').to.exist;
+    });
   });
   
   describe('name action', () => {
@@ -260,6 +322,51 @@ describe('sites', () => {
       
       // Restore prototype
       Object.setPrototypeOf(MockedSites.prototype, originalPrototype);
+    });
+
+    it('prevents duplicate aliases', async () => {
+      const cmd = new MockedSites([], mockConfig) as MockedSitesInstance;
+      
+      // Mock existing site with alias
+      sitesConfigStubs.getSiteByAlias.returns({
+        createdAt: new Date().toISOString(),
+        name: 'existing-alias',
+        path: '/path/to/site'
+      });
+      
+      cmd.parse = stub().resolves({
+        args: { action: 'name', name: 'existing-alias', path: TEST_SITE_PATH },
+        flags: {}
+      });
+      
+      try {
+        await cmd.run();
+        expect.fail('Should have thrown an error about duplicate alias');
+      } catch (error: unknown) {
+        const err = error as Error;
+        expect(err.message).to.include('Alias "existing-alias" is already in use');
+      }
+    });
+
+    it('allows adding alias to existing site', async () => {
+      const cmd = new MockedSites([], mockConfig) as MockedSitesInstance;
+      
+      // Mock existing site
+      sitesConfigStubs.getSiteByPath.returns({
+        createdAt: new Date().toISOString(),
+        name: 'existing-site',
+        path: TEST_SITE_PATH
+      });
+      
+      cmd.parse = stub().resolves({
+        args: { action: 'name', name: 'new-alias', path: TEST_SITE_PATH },
+        flags: {}
+      });
+      
+      await cmd.run();
+      
+      // Verify that addSite was called with correct args
+      expect(sitesConfigStubs.addSite.calledWith('new-alias', TEST_SITE_PATH)).to.be.true;
     });
   });
   

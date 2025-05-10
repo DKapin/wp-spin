@@ -18,6 +18,7 @@ export const baseFlags = {
 
 export abstract class BaseCommand extends Command {
   static baseFlags = baseFlags;
+  static hidden = true;
 /**
  * Debug logger
  */
@@ -139,11 +140,12 @@ export abstract class BaseCommand extends Command {
   /**
    * Get container names for the current project
    */
-  protected getContainerNames(): { mysql: string; wordpress: string } {
+  protected getContainerNames(): { mysql: string; phpmyadmin: string; wordpress: string } {
     const projectName = path.basename(this.docker.getProjectPath());
     return {
-      mysql: `${projectName}_mysql_1`,
-      wordpress: `${projectName}_wordpress_1`,
+      mysql: `${projectName}_mysql`,
+      phpmyadmin: `${projectName}_phpmyadmin`,
+      wordpress: `${projectName}_wordpress`,
     };
   }
 
