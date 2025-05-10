@@ -1,4 +1,5 @@
-import { Config } from '@oclif/core';
+import { Config, Flags } from '@oclif/core';
+import { execa } from 'execa';
 import fs from 'fs-extra';
 import path from 'node:path';
 
@@ -6,12 +7,24 @@ import { DockerService } from '../services/docker.js';
 import { BaseCommand } from './base.js';
 
 export default class Logs extends BaseCommand {
-  static description = 'View logs from the WordPress environment';
+  static description = 'View logs from a specific container (wordpress, mysql, or phpmyadmin)';
   static examples = [
     '$ wp-spin logs',
+    '$ wp-spin logs --container=mysql',
+    '$ wp-spin logs --container=phpmyadmin',
+    '$ wp-spin logs --container=wordpress',
+    '$ wp-spin logs --container=mysql --site=my-wp-site',
   ];
-  static hidden = false;
-protected docker: DockerService;
+  static flags = {
+    ...BaseCommand.baseFlags,
+    container: Flags.string({
+      char: 'c',
+      default: 'wordpress',
+      description: 'Container to target (wordpress, mysql, phpmyadmin)',
+      options: ['wordpress', 'mysql', 'phpmyadmin'],
+    }),
+  };
+  protected docker: DockerService;
 
   constructor(argv: string[], config: Config) {
     super(argv, config);
@@ -37,9 +50,17 @@ protected docker: DockerService;
   }
 
   public async run(): Promise<void> {
+    const { flags } = await this.parse(Logs);
     await this.ensureProjectDirectory();
     await this.checkDockerEnvironment();
-    await this.docker.logs();
+    const containerType = flags.container || 'wordpress';
+    const containerNames = this.getContainerNames();
+    let containerName = containerNames.wordpress;
+    if (containerType === 'mysql') containerName = containerNames.mysql;
+    if (containerType === 'phpmyadmin') containerName = containerNames.phpmyadmin;
+
+    // Show logs from the selected container
+    await execa('docker', ['logs', containerName], { stdio: 'inherit' });
   }
 
   private checkFileExists(filePath: string): boolean {

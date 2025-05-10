@@ -176,7 +176,10 @@ export function updateSite(name: string, path: string): boolean {
     }
     
     // Update the site
-    sites[siteIndex].path = path;
+    sites[siteIndex] = {
+      ...sites[siteIndex],
+      path,
+    };
     
     // Write updated configuration while preserving existing data
     const configContent = fs.readFileSync(SITES_CONFIG_PATH, 'utf8');
@@ -209,13 +212,14 @@ export function removeSite(name: string): boolean {
     // Read existing configuration
     const sites = getSites();
     
-    // Filter out the site to remove
-    const updatedSites = sites.filter(site => site.name !== name);
-    
-    // If the length is the same, the site wasn't found
-    if (updatedSites.length === sites.length) {
+    // Find the site to remove
+    const siteToRemove = sites.find(site => site.name === name);
+    if (!siteToRemove) {
       return false;
     }
+    
+    // Filter out the site to remove
+    const updatedSites = sites.filter(site => site.name !== name);
     
     // Write updated configuration while preserving existing data
     const configContent = fs.readFileSync(SITES_CONFIG_PATH, 'utf8');
@@ -237,17 +241,51 @@ export function removeSite(name: string): boolean {
 }
 
 /**
+ * Get a site by any of its aliases (including the name)
+ * @param alias Site name or any alias
+ * @returns Site configuration or undefined if not found
+ */
+export function getSiteByAlias(alias: string): SiteConfig | undefined {
+  try {
+    initSitesConfig();
+    const sites = getSites();
+    
+    // First try exact name match
+    const site = sites.find(site => site.name === alias);
+    if (site) {
+      return site;
+    }
+    
+    // If not found, check if it's an alias for any site
+    const siteWithAlias = sites.find(site => {
+      // Get all aliases for this path
+      const aliases = sites
+        .filter(s => s.path === site.path)
+        .map(s => s.name);
+      return aliases.includes(alias);
+    });
+    
+    return siteWithAlias;
+  } catch (error) {
+    console.error('Error getting site by alias:', error);
+    return undefined;
+  }
+}
+
+/**
  * Get a site by name from the configuration
  * @param name Site name/tag
  * @returns Site configuration or undefined if not found
  */
 export function getSiteByName(name: string): SiteConfig | undefined {
-  try {
-    initSitesConfig();
-    const sites = getSites();
-    return sites.find(site => site.name === name);
-  } catch (error) {
-    console.error('Error getting site by name:', error);
-    return undefined;
-  }
+  return getSiteByAlias(name);
+}
+
+/**
+ * Check if an alias is already in use
+ * @param alias Alias to check
+ * @returns The site using this alias, or undefined if not in use
+ */
+export function isAliasInUse(alias: string): SiteConfig | undefined {
+  return getSiteByAlias(alias);
 } 
