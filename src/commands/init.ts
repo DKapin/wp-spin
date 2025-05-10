@@ -32,17 +32,11 @@ static examples = [
     '$ wp-spin init my-wordpress-site                             # Uses latest WordPress version',
     '$ wp-spin init my-wordpress-site --wordpress-version=6.4.2   # Installs specific WordPress version 6.4.2',
     '$ wp-spin init my-wordpress-site --site-name=pretty          # Creates a site with a friendly name "pretty"',
-    '$ wp-spin init my-wordpress-site --from-current-dir          # Use existing WordPress files',
   ];
 static flags = {
     force: Flags.boolean({ 
       char: 'f', 
       description: 'Force initialization even if directory exists' 
-    }),
-    'from-current-dir': Flags.boolean({
-      char: 'c',
-      description: 'Use the current directory as the WordPress source if it contains a valid installation',
-      required: false,
     }),
     'site-name': Flags.string({
       char: 's',
@@ -974,12 +968,7 @@ desktop.ini
    */
   private async setupWordpressSource(wordpressPath: string, flags: CommandFlags, projectPath: string): Promise<void> {
     const spinner = ora();
-    let wordpressSourcePath: null | string = null;
-
-    // Handle --from-current-dir flag
-    if (flags['from-current-dir']) {
-      wordpressSourcePath = await this.handleLocalSource();
-    }
+    const wordpressSourcePath: null | string = null;
 
     // Create directory structure
     spinner.start('Creating WordPress directory structure...');
