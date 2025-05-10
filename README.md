@@ -117,23 +117,21 @@ USAGE
   $ wp-spin containers [-s <value>]
 
 FLAGS
-  -s, --site=<value>  Site path or site name/alias
+  -s, --site=<value>  Site path or site name
 
 DESCRIPTION
-  Show status of Docker containers for this project. You can use either the site's path or any of its aliases with the --site flag.
+  Show status of Docker containers for this project
 
 ALIASES
   $ wp-spin containers
   $ wp-spin status
 
 EXAMPLES
-  $ wp-spin containers                    # Show containers in current directory
+  $ wp-spin ps
 
-  $ wp-spin containers --site=my-site    # Show containers using site alias
+  $ wp-spin ps --site=my-site
 
-  $ wp-spin containers --site=dev        # Show containers using another alias
-
-  $ wp-spin containers --site=/path/to/site  # Show containers using full path
+  $ wp-spin ps --site=/path/to/my-site
 ```
 
 ## `wp-spin init NAME`
@@ -150,10 +148,12 @@ ARGUMENTS
 FLAGS
   -f, --force                      Force initialization even if directory exists
   -s, --site-name=<value>          Site name/alias to register for easy reference with --site flag
-  -w, --wordpress-version=<value>  [default: latest] WordPress version to install (e.g., 6.2, 5.9.3, latest)
+  -w, --wordpress-version=<value>  [default: latest] WordPress version to install (e.g., 6.2, 5.9.3, latest). Use
+                                   specific version numbers like "6.4.2" for a precise release, or "latest" for the most
+                                   recent version.
 
 DESCRIPTION
-  Initialize a new WordPress project with your choice of WordPress version. The site name/alias can be used with the --site flag in other commands.
+  Initialize a new WordPress project with your choice of WordPress version
 
 EXAMPLES
   $ wp-spin init my-wordpress-site                             # Uses latest WordPress version
@@ -174,23 +174,21 @@ USAGE
   $ wp-spin ps [-s <value>]
 
 FLAGS
-  -s, --site=<value>  Site path or site name/alias
+  -s, --site=<value>  Site path or site name
 
 DESCRIPTION
-  Show status of Docker containers for this project. You can use either the site's path or any of its aliases with the --site flag.
+  Show status of Docker containers for this project
 
 ALIASES
   $ wp-spin containers
   $ wp-spin status
 
 EXAMPLES
-  $ wp-spin ps                    # Show containers in current directory
+  $ wp-spin ps
 
-  $ wp-spin ps --site=my-site    # Show containers using site alias
+  $ wp-spin ps --site=my-site
 
-  $ wp-spin ps --site=dev        # Show containers using another alias
-
-  $ wp-spin ps --site=/path/to/site  # Show containers using full path
+  $ wp-spin ps --site=/path/to/my-site
 ```
 
 _See code: [src/commands/ps.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/ps.ts)_
@@ -204,19 +202,13 @@ USAGE
   $ wp-spin restart [-s <value>]
 
 FLAGS
-  -s, --site=<value>  Site path or site name/alias
+  -s, --site=<value>  Site path or site name
 
 DESCRIPTION
-  Restart the WordPress environment. You can use either the site's path or any of its aliases with the --site flag.
+  Restart the WordPress environment
 
 EXAMPLES
-  $ wp-spin restart                    # Restart containers in current directory
-
-  $ wp-spin restart --site=my-site    # Restart containers using site alias
-
-  $ wp-spin restart --site=dev        # Restart containers using another alias
-
-  $ wp-spin restart --site=/path/to/site  # Restart containers using full path
+  $ wp-spin restart
 ```
 
 _See code: [src/commands/restart.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/restart.ts)_
@@ -227,7 +219,8 @@ Share your WordPress site publicly using ngrok
 
 ```
 USAGE
-  $ wp-spin share [-s <value>] [-a <value>] [-A <value>...] [-D <value>...] [-d] [-d <value>] [-u] [-p <value>]
+  $ wp-spin share [-s <value>] [-a <value>] [-A <value>...] [-D <value>...] [-d] [-d <value>] [-u] [-p
+    <value>]
 
 FLAGS
   -A, --cidr-allow=<value>...  Reject connections that do not match the given CIDRs
@@ -236,22 +229,16 @@ FLAGS
   -d, --debug                  Enable debug mode to see detailed ngrok output
   -d, --domain=<value>         Custom domain for your ngrok tunnel (requires ngrok account)
   -p, --port=<value>           Port to expose (defaults to WordPress port from Docker)
-  -s, --site=<value>           Site path or site name/alias
+  -s, --site=<value>           Site path or site name
   -u, --no-fixurl              Skip fixing WordPress site URL for ngrok compatibility
 
 DESCRIPTION
-  Share your WordPress site publicly using ngrok. You can use either the site's path or any of its aliases with the --site flag.
+  Share your WordPress site publicly using ngrok
 
 EXAMPLES
-  $ wp-spin share                    # Share site in current directory
+  $ wp-spin share
 
-  $ wp-spin share --site=my-site    # Share site using alias
-
-  $ wp-spin share --site=dev        # Share site using another alias
-
-  $ wp-spin share --site=/path/to/site  # Share site using full path
-
-  $ wp-spin share --domain=mysite.ngrok-free.app  # Use custom domain
+  $ wp-spin share --domain=mysite.ngrok-free.app
 ```
 
 _See code: [src/commands/share.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/share.ts)_
@@ -265,23 +252,21 @@ USAGE
   $ wp-spin sites ACTION [NAME] [PATH]
 
 ARGUMENTS
-  ACTION  Action to perform: list, name, update, remove
+  ACTION  (list|name|update|remove) Action to perform: list, name, update, remove
   NAME    Site name/alias
   PATH    Site path (for name/update actions)
 
 DESCRIPTION
-  Manage WordPress site aliases for easy reference with the --site flag. You can have multiple aliases for the same site path.
+  Manage WordPress site aliases
 
 EXAMPLES
-  $ wp-spin sites list                    # List all registered sites and their aliases
+  $ wp-spin sites list
 
-  $ wp-spin sites name my-site ./path    # Register a new site with alias "my-site"
+  $ wp-spin sites name my-site ./path/to/site
 
-  $ wp-spin sites name dev ./path        # Add another alias "dev" to the same site
+  $ wp-spin sites remove my-site
 
-  $ wp-spin sites remove my-site         # Remove the "my-site" alias
-
-  $ wp-spin sites update my-site /new/path  # Update the path for "my-site" alias
+  $ wp-spin sites update my-site /new/path/to/site
 ```
 
 _See code: [src/commands/sites.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/sites.ts)_
@@ -295,19 +280,17 @@ USAGE
   $ wp-spin start [-s <value>]
 
 FLAGS
-  -s, --site=<value>  Site path or site name/alias
+  -s, --site=<value>  Site path or site name
 
 DESCRIPTION
-  Start the WordPress environment. You can use either the site's path or any of its aliases with the --site flag.
+  Start the WordPress environment
 
 EXAMPLES
-  $ wp-spin start                    # Start containers in current directory
+  $ wp-spin start
 
-  $ wp-spin start --site=my-site    # Start containers using site alias
+  $ wp-spin start --site=my-site
 
-  $ wp-spin start --site=dev        # Start containers using another alias
-
-  $ wp-spin start --site=/path/to/site  # Start containers using full path
+  $ wp-spin start --site=/path/to/my-site
 ```
 
 _See code: [src/commands/start.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/start.ts)_
@@ -321,23 +304,21 @@ USAGE
   $ wp-spin status [-s <value>]
 
 FLAGS
-  -s, --site=<value>  Site path or site name/alias
+  -s, --site=<value>  Site path or site name
 
 DESCRIPTION
-  Show status of Docker containers for this project. You can use either the site's path or any of its aliases with the --site flag.
+  Show status of Docker containers for this project
 
 ALIASES
   $ wp-spin containers
-  $ wp-spin ps
+  $ wp-spin status
 
 EXAMPLES
-  $ wp-spin status                    # Show containers in current directory
+  $ wp-spin ps
 
-  $ wp-spin status --site=my-site    # Show containers using site alias
+  $ wp-spin ps --site=my-site
 
-  $ wp-spin status --site=dev        # Show containers using another alias
-
-  $ wp-spin status --site=/path/to/site  # Show containers using full path
+  $ wp-spin ps --site=/path/to/my-site
 ```
 
 _See code: [src/commands/status.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/status.ts)_
@@ -351,19 +332,15 @@ USAGE
   $ wp-spin stop [-s <value>]
 
 FLAGS
-  -s, --site=<value>  Site path or site name/alias
+  -s, --site=<value>  Site path or site name
 
 DESCRIPTION
-  Stop the WordPress environment. You can use either the site's path or any of its aliases with the --site flag.
+  Stop the WordPress environment
 
 EXAMPLES
-  $ wp-spin stop                    # Stop containers in current directory
+  $ wp-spin stop
 
-  $ wp-spin stop --site=my-site    # Stop containers using site alias
-
-  $ wp-spin stop --site=dev        # Stop containers using another alias
-
-  $ wp-spin stop --site=/path/to/site  # Stop containers using full path
+  $ wp-spin stop --site=./path/to/wordpress
 ```
 
 _See code: [src/commands/stop.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/stop.ts)_

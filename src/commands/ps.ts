@@ -35,7 +35,7 @@ export default class ContainerStatus extends BaseCommand {
     try {
       // Find the project root directory, starting from site directory if specified
       const startPath = this.siteDirectory || process.cwd();
-      const projectRoot = this.findProjectRoot(startPath);
+      const projectRoot = this.findProjectRoot();
       
       if (!projectRoot) {
         this.error('No WordPress project found in this directory or any parent directory. Make sure you are inside a wp-spin project or specify a valid site path with --site.');

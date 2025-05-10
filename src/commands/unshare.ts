@@ -1,6 +1,7 @@
 import { Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { execa } from 'execa';
+import * as fs from 'node:fs';
 import ora from 'ora';
 
 import { BaseCommand } from './base.js';
@@ -114,7 +115,7 @@ static flags = {
     // Strategy 1: Project root
     if (projectRoot) {
       const configPath = `${projectRoot}/wordpress/wp-config.php`;
-      if (this.existsSync(`${configPath}.bak`)) {
+      if (fs.existsSync(`${configPath}.bak`)) {
         wpConfigPath = configPath;
         wpConfigBackupPath = `${configPath}.bak`;
       }
@@ -125,7 +126,7 @@ static flags = {
       const dockerVolumePath = await this.findDockerVolumePath(container);
       if (dockerVolumePath) {
         const volPath = `${dockerVolumePath}/wp-config.php`;
-        if (this.existsSync(`${volPath}.bak`)) {
+        if (fs.existsSync(`${volPath}.bak`)) {
           wpConfigPath = volPath;
           wpConfigBackupPath = `${volPath}.bak`;
         }
@@ -235,7 +236,7 @@ static flags = {
     // Process all config files sequentially instead of with await in a loop
     const results = await Promise.all(
       possiblePaths.map(async (path) => {
-        if (!this.existsSync(path)) {
+        if (!fs.existsSync(path)) {
           return false;
         }
         
@@ -283,7 +284,7 @@ static flags = {
       const configPaths = await this.findConfigPaths(container);
       
       // Check if we found the backup
-      if (configPaths.backup && this.existsSync(configPaths.backup)) {
+      if (configPaths.backup && fs.existsSync(configPaths.backup)) {
         await this.restoreFromBackup(configPaths.main, configPaths.backup, spinner);
       } else if (configPaths.projectRoot) {
         await this.removeNgrokConfigBlock(configPaths.projectRoot, spinner);
