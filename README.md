@@ -98,33 +98,15 @@ wp-spin includes several security enhancements:
 ## Commands
 
 <!-- commands -->
-* [`wp-spin base`](#wp-spin-base)
 * [`wp-spin containers`](#wp-spin-containers)
 * [`wp-spin init NAME`](#wp-spin-init-name)
-* [`wp-spin logs`](#wp-spin-logs)
-* [`wp-spin plugin`](#wp-spin-plugin)
 * [`wp-spin ps`](#wp-spin-ps)
 * [`wp-spin restart`](#wp-spin-restart)
 * [`wp-spin share`](#wp-spin-share)
-* [`wp-spin shell`](#wp-spin-shell)
 * [`wp-spin sites ACTION [NAME] [PATH]`](#wp-spin-sites-action-name-path)
 * [`wp-spin start`](#wp-spin-start)
 * [`wp-spin status`](#wp-spin-status)
 * [`wp-spin stop`](#wp-spin-stop)
-* [`wp-spin theme`](#wp-spin-theme)
-* [`wp-spin unshare`](#wp-spin-unshare)
-
-## `wp-spin base`
-
-```
-USAGE
-  $ wp-spin base [-s <value>]
-
-FLAGS
-  -s, --site=<value>  Site path or site name
-```
-
-_See code: [src/commands/base.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/base.ts)_
 
 ## `wp-spin containers`
 
@@ -158,13 +140,12 @@ Initialize a new WordPress project with your choice of WordPress version
 
 ```
 USAGE
-  $ wp-spin init NAME [-f] [-c] [-s <value>] [-w <value>]
+  $ wp-spin init NAME [-f] [-s <value>] [-w <value>]
 
 ARGUMENTS
   NAME  Project name
 
 FLAGS
-  -c, --from-current-dir           Use the current directory as the WordPress source if it contains a valid installation
   -f, --force                      Force initialization even if directory exists
   -s, --site-name=<value>          Site name/alias to register for easy reference with --site flag
   -w, --wordpress-version=<value>  [default: latest] WordPress version to install (e.g., 6.2, 5.9.3, latest). Use
@@ -180,59 +161,9 @@ EXAMPLES
   $ wp-spin init my-wordpress-site --wordpress-version=6.4.2   # Installs specific WordPress version 6.4.2
 
   $ wp-spin init my-wordpress-site --site-name=pretty          # Creates a site with a friendly name "pretty"
-
-  $ wp-spin init my-wordpress-site --from-current-dir          # Use existing WordPress files
 ```
 
 _See code: [src/commands/init.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/init.ts)_
-
-## `wp-spin logs`
-
-View logs from the WordPress environment
-
-```
-USAGE
-  $ wp-spin logs [-s <value>]
-
-FLAGS
-  -s, --site=<value>  Site path or site name
-
-DESCRIPTION
-  View logs from the WordPress environment
-
-EXAMPLES
-  $ wp-spin logs
-```
-
-_See code: [src/commands/logs.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/logs.ts)_
-
-## `wp-spin plugin`
-
-Manage WordPress plugins
-
-```
-USAGE
-  $ wp-spin plugin [-s <value>] [-f] [-v <value> [-a <value> | -r <value>]]
-
-FLAGS
-  -a, --add=<value>      Name of the plugin to install
-  -f, --force            Force operation even if plugin exists/does not exist
-  -r, --remove=<value>   Name of the plugin to remove
-  -s, --site=<value>     Site path or site name
-  -v, --version=<value>  Plugin version to install (only used with --add)
-
-DESCRIPTION
-  Manage WordPress plugins
-
-EXAMPLES
-  $ wp-spin plugin --add woocommerce
-
-  $ wp-spin plugin --add woocommerce --version 8.0.0
-
-  $ wp-spin plugin --remove woocommerce
-```
-
-_See code: [src/commands/plugin.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/plugin.ts)_
 
 ## `wp-spin ps`
 
@@ -288,21 +219,18 @@ Share your WordPress site publicly using ngrok
 
 ```
 USAGE
-  $ wp-spin share [-s <value>] [-a <value>] [-d] [-u] [-f] [-m config|options] [-p <value>] [-r
-    us|eu|ap|au|sa|jp|in] [-s <value>]
+  $ wp-spin share [-s <value>] [-a <value>] [-A <value>...] [-D <value>...] [-d] [-d <value>] [-u] [-p
+    <value>]
 
 FLAGS
-  -a, --auth=<value>       ngrok auth token (or use NGROK_AUTH_TOKEN env variable)
-  -d, --debug              Enable debug mode to see detailed ngrok output
-  -f, --force              Force sharing even if not in a wp-spin project directory
-  -m, --method=<option>    [default: config] Method to fix WordPress URLs: config (wp-config.php) or options (database)
-                           <options: config|options>
-  -p, --port=<value>       [default: 8080] Port to expose (defaults to WordPress port from Docker)
-  -r, --region=<option>    [default: us] Region for the ngrok tunnel
-                           <options: us|eu|ap|au|sa|jp|in>
-  -s, --site=<value>       Site path or site name
-  -s, --subdomain=<value>  Custom subdomain for your ngrok tunnel (requires ngrok account)
-  -u, --fixurl             Fix WordPress site URL to work with ngrok
+  -A, --cidr-allow=<value>...  Reject connections that do not match the given CIDRs
+  -D, --cidr-deny=<value>...   Reject connections that match the given CIDRs
+  -a, --auth=<value>           ngrok auth token (or use NGROK_AUTH_TOKEN env variable)
+  -d, --debug                  Enable debug mode to see detailed ngrok output
+  -d, --domain=<value>         Custom domain for your ngrok tunnel (requires ngrok account)
+  -p, --port=<value>           Port to expose (defaults to WordPress port from Docker)
+  -s, --site=<value>           Site path or site name
+  -u, --no-fixurl              Skip fixing WordPress site URL for ngrok compatibility
 
 DESCRIPTION
   Share your WordPress site publicly using ngrok
@@ -310,32 +238,10 @@ DESCRIPTION
 EXAMPLES
   $ wp-spin share
 
-  $ wp-spin share --subdomain=mysite
-
-  $ wp-spin share --region=eu
+  $ wp-spin share --domain=mysite.ngrok-free.app
 ```
 
 _See code: [src/commands/share.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/share.ts)_
-
-## `wp-spin shell`
-
-Open a shell in the WordPress container
-
-```
-USAGE
-  $ wp-spin shell [-s <value>]
-
-FLAGS
-  -s, --site=<value>  Site path or site name
-
-DESCRIPTION
-  Open a shell in the WordPress container
-
-EXAMPLES
-  $ wp-spin shell
-```
-
-_See code: [src/commands/shell.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/shell.ts)_
 
 ## `wp-spin sites ACTION [NAME] [PATH]`
 
@@ -438,60 +344,6 @@ EXAMPLES
 ```
 
 _See code: [src/commands/stop.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/stop.ts)_
-
-## `wp-spin theme`
-
-Manage WordPress themes
-
-```
-USAGE
-  $ wp-spin theme [-s <value>] [-f] [-v <value> [-a <value> | -r <value>]]
-
-FLAGS
-  -a, --add=<value>      Name of the theme to install
-  -f, --force            Force operation even if theme exists/does not exist
-  -r, --remove=<value>   Name of the theme to remove
-  -s, --site=<value>     Site path or site name
-  -v, --version=<value>  Theme version to install (only used with --add)
-
-DESCRIPTION
-  Manage WordPress themes
-
-EXAMPLES
-  $ wp-spin theme --add twentytwentyfour
-
-  $ wp-spin theme --add twentytwentyfour --version 1.0.0
-
-  $ wp-spin theme --remove twentytwentyfour
-```
-
-_See code: [src/commands/theme.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/theme.ts)_
-
-## `wp-spin unshare`
-
-Stop sharing your WordPress site through ngrok
-
-```
-USAGE
-  $ wp-spin unshare [-s <value>] [-d] [-f]
-
-FLAGS
-  -d, --debug         Show debugging information
-  -f, --force         Force kill ngrok processes without restoring WordPress configuration
-  -s, --site=<value>  Site path or site name
-
-DESCRIPTION
-  Stop sharing your WordPress site through ngrok
-
-EXAMPLES
-  $ wp-spin unshare
-
-  $ wp-spin unshare --force
-
-  $ wp-spin unshare --site=my-site
-```
-
-_See code: [src/commands/unshare.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/unshare.ts)_
 <!-- commandsstop -->
 
 ## Development Workflow

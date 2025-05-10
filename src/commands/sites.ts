@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ora from 'ora';
 
-import { addSite, getSiteByName, getSiteByPath, getSites, removeSite, updateSite } from '../config/sites.js';
+import { addSite, getSiteByAlias, getSiteByName, getSiteByPath, getSites, isAliasInUse, removeSite, updateSite } from '../config/sites.js';
 
 export default class Sites extends Command {
   static args = {
@@ -22,60 +22,14 @@ export default class Sites extends Command {
       required: false,
     }),
   };
-static description = 'Manage WordPress site aliases';
-static examples = [
+  static description = 'Manage WordPress site aliases';
+  static examples = [
     '$ wp-spin sites list',
     '$ wp-spin sites name my-site ./path/to/site',
     '$ wp-spin sites remove my-site',
     '$ wp-spin sites update my-site /new/path/to/site',
   ];
 
-  async run(): Promise<void> {
-    const { args } = await this.parse(Sites);
-    
-    switch (args.action) {
-      case 'list': {
-        await this.listSites();
-        break;
-      }
-      
-      case 'name': {
-        if (!args.name) {
-          this.error('Site name is required for name action');
-        }
-        
-        if (!args.path) {
-          this.error('Site path is required for name action');
-        }
-        
-        await this.nameSite(args.name, args.path);
-        break;
-      }
-      
-      case 'remove': {
-        if (!args.name) {
-          this.error('Site name is required for remove action');
-        }
-        
-        await this.removeSite(args.name);
-        break;
-      }
-      
-      case 'update': {
-        if (!args.name) {
-          this.error('Site name is required for update action');
-        }
-        
-        if (!args.path) {
-          this.error('Site path is required for update action');
-        }
-        
-        await this.updateSite(args.name, args.path);
-        break;
-      }
-    }
-  }
-  
   /**
    * Check if a file or directory exists (re-implemented)
    */
@@ -135,12 +89,47 @@ static examples = [
     
     console.log('\n📋 Registered WordPress sites:\n');
     
+    let removedCount = 0;
+    
     for (const site of sites) {
-      const date = new Date(site.createdAt);
-      console.log(`${chalk.blue(site.name)}`);
+      const pathExists = this._existsSync(site.path);
+      const isValidProject = pathExists && this._isWpSpinProject(site.path);
+      
+      if (!pathExists || !isValidProject) {
+        // Remove invalid site
+        const success = removeSite(site.name);
+        if (success) {
+          removedCount++;
+        }
+
+        continue;
+      }
+      
+      // Get directory name from path
+      const dirName = path.basename(site.path);
+      
+      // Format dates
+      const addedDate = new Date(site.createdAt);
+      
+      // Get all aliases for this path
+      const aliases = sites
+        .filter(s => s.path === site.path)
+        .map(s => s.name);
+      
+      // Display site info
+      console.log(`${chalk.blue(dirName)}`);
+
+      if (aliases.length > 1) {
+        console.log(`  Aliases: ${chalk.yellow(aliases.join(', '))}`);
+      }
+
       console.log(`  Path: ${chalk.green(site.path)}`);
-      console.log(`  Added: ${date.toLocaleDateString()}`);
+      console.log(`  Added: ${addedDate.toLocaleDateString()}`);
       console.log('');
+    }
+    
+    if (removedCount > 0) {
+      console.log(chalk.yellow(`\nRemoved ${removedCount} invalid site entries.`));
     }
     
     console.log(`Use ${chalk.blue('wp-spin start --site=<n>')} to start a specific site.`);
@@ -173,20 +162,25 @@ static examples = [
       this.error(`Not a valid WordPress project at: ${resolvedPath}`);
     }
     
-    // Check if this path is already registered with a different name
+    // Check if this alias is already in use
+    const existingSite = isAliasInUse(name);
+    if (existingSite) {
+      spinner.fail(`Alias "${name}" is already in use`);
+      this.error(`Alias "${name}" is already in use by site at: ${existingSite.path}`);
+    }
+    
+    // Check if this path is already registered
     const existingPath = getSiteByPath(resolvedPath);
     if (existingPath) {
       spinner.warn(`This site path is already registered with name: ${existingPath.name}`);
       
       console.log(`You can already use ${chalk.blue(`--site=${existingPath.name}`)} with any wp-spin command.`);
-      console.log(`If you want to change the name, remove the existing name first:`);
-      console.log(`  ${chalk.blue(`wp-spin sites remove ${existingPath.name}`)}`);
-      console.log(`Then add your new name:`);
+      console.log(`If you want to add another alias, use:`);
       console.log(`  ${chalk.blue(`wp-spin sites name ${name} ${sitePath}`)}`);
       return;
     }
     
-    // Add the site
+    // Add the site with current timestamp
     const success = addSite(name, resolvedPath);
     
     if (success) {
@@ -234,7 +228,7 @@ static examples = [
     const spinner = ora(`Updating site "${name}"...`).start();
     
     // Check if the site exists
-    const existingSite = getSiteByName(name);
+    const existingSite = getSiteByAlias(name);
     if (!existingSite) {
       spinner.fail(`Site "${name}" not found`);
       this.error(`Site "${name}" not found. Use \`wp-spin sites name ${name} <path>\` to name it.`);
@@ -272,7 +266,7 @@ static examples = [
       return;
     }
     
-    // Update the site
+    // Update the site with current timestamp
     const success = updateSite(name, resolvedPath);
     
     if (success) {
@@ -281,6 +275,52 @@ static examples = [
       console.log(`You can now use ${chalk.blue(`--site=${name}`)} with any wp-spin command.`);
     } else {
       spinner.fail(`Failed to update site "${name}"`);
+    }
+  }
+
+  async run(): Promise<void> {
+    const { args } = await this.parse(Sites);
+    
+    switch (args.action) {
+      case 'list': {
+        await this.listSites();
+        break;
+      }
+      
+      case 'name': {
+        if (!args.name) {
+          this.error('Site name is required for name action');
+        }
+        
+        if (!args.path) {
+          this.error('Site path is required for name action');
+        }
+        
+        await this.nameSite(args.name, args.path);
+        break;
+      }
+      
+      case 'remove': {
+        if (!args.name) {
+          this.error('Site name is required for remove action');
+        }
+        
+        await this.removeSite(args.name);
+        break;
+      }
+      
+      case 'update': {
+        if (!args.name) {
+          this.error('Site name is required for update action');
+        }
+        
+        if (!args.path) {
+          this.error('Site path is required for update action');
+        }
+        
+        await this.updateSite(args.name, args.path);
+        break;
+      }
     }
   }
 } 
