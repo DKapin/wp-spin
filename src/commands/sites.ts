@@ -31,6 +31,55 @@ export default class Sites extends Command {
   ];
 
   /**
+   * Execute the command
+   */
+  public async run(): Promise<void> {
+    const { args } = await this.parse(Sites);
+    
+    switch (args.action) {
+      case 'list': {
+        await this.listSites();
+        break;
+      }
+      
+      case 'name': {
+        if (!args.name) {
+          this.error('Site name is required for name action');
+        }
+        
+        if (!args.path) {
+          this.error('Site path is required for name action');
+        }
+        
+        await this.nameSite(args.name, args.path);
+        break;
+      }
+      
+      case 'remove': {
+        if (!args.name) {
+          this.error('Site name is required for remove action');
+        }
+        
+        await this.removeSite(args.name);
+        break;
+      }
+      
+      case 'update': {
+        if (!args.name) {
+          this.error('Site name is required for update action');
+        }
+        
+        if (!args.path) {
+          this.error('Site path is required for update action');
+        }
+        
+        await this.updateSite(args.name, args.path);
+        break;
+      }
+    }
+  }
+
+  /**
    * Check if a file or directory exists (re-implemented)
    */
   private _existsSync(checkPath: string): boolean {
@@ -198,55 +247,6 @@ export default class Sites extends Command {
     }
   }
   
-  /**
-   * Execute the command
-   */
-  public async run(): Promise<void> {
-    const { args } = await this.parse(Sites);
-    
-    switch (args.action) {
-      case 'list': {
-        await this.listSites();
-        break;
-      }
-      
-      case 'name': {
-        if (!args.name) {
-          this.error('Site name is required for name action');
-        }
-        
-        if (!args.path) {
-          this.error('Site path is required for name action');
-        }
-        
-        await this.nameSite(args.name, args.path);
-        break;
-      }
-      
-      case 'remove': {
-        if (!args.name) {
-          this.error('Site name is required for remove action');
-        }
-        
-        await this.removeSite(args.name);
-        break;
-      }
-      
-      case 'update': {
-        if (!args.name) {
-          this.error('Site name is required for update action');
-        }
-        
-        if (!args.path) {
-          this.error('Site path is required for update action');
-        }
-        
-        await this.updateSite(args.name, args.path);
-        break;
-      }
-    }
-  }
-
   /**
    * Remove a site
    */
