@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "author": "Daniel Kapin",
   "bin": {
-    "wp-spin": "./bin/run.js"
+    "wp-spin": "bin/run.js"
   },
   "bugs": "https://github.com/danielkapin/wp-spin/issues",
   "dependencies": {

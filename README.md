@@ -26,9 +26,22 @@ Before you begin, ensure you have the following installed:
 
 ## Installation
 
-### Installing from GitHub (Recommended)
+### Installing from npm (Recommended)
 
-You can install wp-spin directly from GitHub using npm:
+The easiest way to install wp-spin is using npm:
+
+```bash
+npm install -g wp-spin
+```
+
+After installation, verify it's working:
+```bash
+wp-spin --version
+```
+
+### Installing from GitHub
+
+You can also install wp-spin directly from GitHub using npm:
 
 ```bash
 # Install from the main branch
