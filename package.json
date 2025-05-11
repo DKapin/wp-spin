@@ -58,11 +58,11 @@
     "node": ">=18.0.0"
   },
   "files": [
-    "/bin",
-    "/dist",
-    "/oclif.manifest.json",
-    "/README.md",
-    "/LICENSE"
+    "bin",
+    "dist",
+    "oclif.manifest.json",
+    "README.md",
+    "LICENSE"
   ],
   "homepage": "https://github.com/danielkapin/wp-spin",
   "keywords": [

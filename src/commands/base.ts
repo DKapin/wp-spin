@@ -19,16 +19,26 @@ export const baseFlags = {
 export abstract class BaseCommand extends Command {
   static baseFlags = baseFlags;
   static hidden = true;
-
   /**
    * Debug logger
    */
   protected debugLogger!: (...args: unknown[]) => void;
-
   /**
    * Docker service instance
    */
   protected docker!: IDockerService;
+
+  /**
+   * Get container names for the current project
+   */
+  protected getContainerNames(): { mysql: string; phpmyadmin: string; wordpress: string } {
+    const projectName = path.basename(this.docker.getProjectPath());
+    return {
+      mysql: `${projectName}_mysql`,
+      phpmyadmin: `${projectName}_phpmyadmin`,
+      wordpress: `${projectName}_wordpress`,
+    };
+  }
 
   /**
    * Check if Docker is installed and running
@@ -105,7 +115,7 @@ export abstract class BaseCommand extends Command {
   /**
    * Find the project root directory by walking up from the current directory
    */
-  protected findProjectRoot(): string | null {
+  protected findProjectRoot(): null | string {
     let currentDir = process.cwd();
     const rootDir = path.parse(currentDir).root;
 
@@ -113,6 +123,7 @@ export abstract class BaseCommand extends Command {
       if (this.isWpSpinProject(currentDir)) {
         return currentDir;
       }
+      
       currentDir = path.dirname(currentDir);
     }
 
@@ -126,7 +137,7 @@ export abstract class BaseCommand extends Command {
     try {
       const stats = fs.statSync(path);
       // Check if file is readable and writable by owner only
-      const mode = stats.mode & 0o777;
+      const mode = stats.mode % 0o1000; // Use modulo instead of bitwise AND
       return mode === 0o600 || mode === 0o700;
     } catch {
       return false;
@@ -241,18 +252,6 @@ export abstract class BaseCommand extends Command {
     }
 
     return resolvedPath;
-  }
-
-  /**
-   * Get container names for the current project
-   */
-  protected getContainerNames(): { mysql: string; phpmyadmin: string; wordpress: string } {
-    const projectName = path.basename(this.docker.getProjectPath());
-    return {
-      mysql: `${projectName}_mysql`,
-      phpmyadmin: `${projectName}_phpmyadmin`,
-      wordpress: `${projectName}_wordpress`,
-    };
   }
 
   /**

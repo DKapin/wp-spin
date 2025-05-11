@@ -33,8 +33,7 @@ export default class ContainerStatus extends BaseCommand {
     const spinner = ora();
     
     try {
-      // Find the project root directory, starting from site directory if specified
-      const startPath = this.siteDirectory || process.cwd();
+      // Find the project root directory
       const projectRoot = this.findProjectRoot();
       
       if (!projectRoot) {
