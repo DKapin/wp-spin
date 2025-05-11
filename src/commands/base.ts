@@ -104,6 +104,11 @@ export abstract class BaseCommand extends Command {
    * Find the project root directory by walking up from the current directory
    */
   protected findProjectRoot(): null | string {
+    // If we already have a valid site path, don't walk up
+    if (this.docker?.getProjectPath()) {
+      return this.docker.getProjectPath();
+    }
+
     let currentDir = process.cwd();
     const rootDir = path.parse(currentDir).root;
 
@@ -143,15 +148,29 @@ export abstract class BaseCommand extends Command {
 
   /**
    * Check if a file or directory has safe permissions
+   * Safe means:
+   * - Owner has read access
+   * - For directories: owner has execute access
+   * - For files: owner has read access
    */
   protected hasSafePermissions(path: string): boolean {
     try {
       const stats = fs.statSync(path);
-      // Check if file is readable and writable by owner
-      // Allow common directory permissions: 755 (rwxr-xr-x) and 750 (rwxr-x---)
       const mode = stats.mode % 0o1000; // Use modulo instead of bitwise AND
-      return mode === 0o600 || mode === 0o700 || mode === 0o755 || mode === 0o750;
-    } catch {
+      const modeStr = mode.toString(8).padStart(3, '0');
+      
+      // Check if owner has read access (first digit >= 4)
+      const ownerRead = Number.parseInt(modeStr[0], 8) >= 4;
+      
+      // For directories, also check if owner has execute access (first digit >= 1)
+      const isDirectory = stats.isDirectory();
+      const ownerExecute = isDirectory ? Number.parseInt(modeStr[0], 8) >= 1 : true;
+      
+      const isSafe = ownerRead && ownerExecute;
+      console.log(`DEBUG: Checking permissions for ${path}: mode=${modeStr}, isSafe=${isSafe}`);
+      return isSafe;
+    } catch (error) {
+      console.log(`DEBUG: Error checking permissions for ${path}:`, error);
       return false;
     }
   }
@@ -170,8 +189,10 @@ export abstract class BaseCommand extends Command {
       // Resolve the site path
       const resolvedPath = this.resolveSitePath(flags.site);
 
-      // Pass this command instance to DockerService
+      // Initialize Docker service with resolved path
       this.docker = new DockerService(resolvedPath, this);
+
+      // No need to check project exists since resolveSitePath already validated it
     } catch (error) {
       this.prettyError(error instanceof Error ? error : new Error(String(error)));
       this.exit(1);
@@ -222,7 +243,6 @@ export abstract class BaseCommand extends Command {
     }
 
     const dockerComposePath = path.join(dir, 'docker-compose.yml');
-
     if (!fs.existsSync(dockerComposePath)) {
       return false;
     }
@@ -255,23 +275,24 @@ export abstract class BaseCommand extends Command {
   protected resolveSitePath(sitePath?: string): string {
     if (sitePath) {
       // First, check if sitePath is a registered site name
-      try {
-        const site = getSiteByName(sitePath);
-
-        if (site) {
-          const validatedPath = this.validatePath(site.path);
-          if (!this.isWpSpinProject(validatedPath)) {
-            this.prettyError(new Error(`Registered site "${sitePath}" path (${validatedPath}) is not a valid wp-spin project.`));
-            this.exit(1);
-          }
-
-          return validatedPath;
+      const site = getSiteByName(sitePath);
+      
+      if (site) {
+        // Validate the path exists and is a valid project
+        if (!fs.existsSync(site.path)) {
+          this.prettyError(new Error(`Site path does not exist: ${site.path}`));
+          this.exit(1);
         }
-      } catch (error) {
-        this.logDebug(`Error resolving site by name: ${error instanceof Error ? error.message : String(error)}`);
+
+        if (!this.isWpSpinProject(site.path)) {
+          this.prettyError(new Error(`Not a valid WordPress project at: ${site.path}`));
+          this.exit(1);
+        }
+
+        return site.path;
       }
 
-      // Check if path is absolute or relative
+      // If not a site name, check if path is absolute or relative
       if (path.isAbsolute(sitePath)) {
         const validatedPath = this.validatePath(sitePath);
         if (!this.isWpSpinProject(validatedPath)) {
@@ -293,7 +314,7 @@ export abstract class BaseCommand extends Command {
       return validatedPath;
     }
 
-    // Use current directory or walk up to find a project
+    // Only walk up directory tree if no site path was provided
     const projectRoot = this.findProjectRoot();
     if (projectRoot) {
       return this.validatePath(projectRoot);
@@ -318,13 +339,17 @@ export abstract class BaseCommand extends Command {
    * Validate and sanitize a path
    */
   protected validatePath(inputPath: string): string {
+    console.log(`DEBUG: Validating path: ${inputPath}`);
+    
     if (!this.isSafePath(inputPath)) {
       throw new Error('Path traversal detected');
     }
 
     const resolvedPath = path.resolve(inputPath);
+    console.log(`DEBUG: Resolved path: ${resolvedPath}`);
+    
     if (!this.hasSafePermissions(resolvedPath)) {
-      throw new Error('Unsafe file permissions detected');
+      throw new Error(`Unsafe file permissions detected for path: ${resolvedPath}`);
     }
 
     return resolvedPath;

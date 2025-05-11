@@ -140,6 +140,9 @@ export default class Sites extends Command {
     
     let removedCount = 0;
     
+    // Import execSync once outside the loop
+    const { execSync } = await import('node:child_process');
+    
     for (const site of sites) {
       const pathExists = this._existsSync(site.path);
       const isValidProject = pathExists && this._isWpSpinProject(site.path);
@@ -154,9 +157,6 @@ export default class Sites extends Command {
         continue;
       }
       
-      // Get directory name from path
-      const dirName = path.basename(site.path);
-      
       // Format dates
       const addedDate = new Date(site.createdAt);
       
@@ -164,9 +164,22 @@ export default class Sites extends Command {
       const aliases = sites
         .filter(s => s.path === site.path)
         .map(s => s.name);
+
+      // Check Docker container status using site name
+      let containerStatus = 'Stopped';
+      try {
+        const result = execSync(`docker ps --filter "name=${site.name}" --format "{{.Names}}"`, { encoding: 'utf8' });
+        const runningContainers = result.trim().split('\n').filter(Boolean);
+        if (runningContainers.length > 0) {
+          containerStatus = chalk.green('Running');
+        }
+      } catch {
+        // If docker command fails, assume containers are stopped
+        containerStatus = chalk.red('Stopped');
+      }
       
       // Display site info
-      console.log(`${chalk.blue(dirName)}`);
+      console.log(`${chalk.blue(site.name)}`);
 
       if (aliases.length > 1) {
         console.log(`  Aliases: ${chalk.yellow(aliases.join(', '))}`);
@@ -174,6 +187,7 @@ export default class Sites extends Command {
 
       console.log(`  Path: ${chalk.green(site.path)}`);
       console.log(`  Added: ${addedDate.toLocaleDateString()}`);
+      console.log(`  Status: ${containerStatus}`);
       console.log('');
     }
     

@@ -278,7 +278,12 @@ export function getSiteByAlias(alias: string): SiteConfig | undefined {
  * @returns Site configuration or undefined if not found
  */
 export function getSiteByName(name: string): SiteConfig | undefined {
-  return getSiteByAlias(name);
+  console.log('DEBUG: Getting site by name:', name);
+  const sites = getSites();
+  console.log('DEBUG: All sites:', sites);
+  const site = sites.find(site => site.name === name);
+  console.log('DEBUG: Found site:', site);
+  return site;
 }
 
 /**
