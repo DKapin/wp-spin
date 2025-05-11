@@ -147,9 +147,10 @@ export abstract class BaseCommand extends Command {
   protected hasSafePermissions(path: string): boolean {
     try {
       const stats = fs.statSync(path);
-      // Check if file is readable and writable by owner only
+      // Check if file is readable and writable by owner
+      // Allow common directory permissions: 755 (rwxr-xr-x) and 750 (rwxr-x---)
       const mode = stats.mode % 0o1000; // Use modulo instead of bitwise AND
-      return mode === 0o600 || mode === 0o700;
+      return mode === 0o600 || mode === 0o700 || mode === 0o755 || mode === 0o750;
     } catch {
       return false;
     }
@@ -181,8 +182,9 @@ export abstract class BaseCommand extends Command {
    * Check if a path is safe to use (no path traversal)
    */
   protected isSafePath(path: string): boolean {
-    const normalizedPath = path.normalize(path);
-    return !normalizedPath.includes('..') && !normalizedPath.startsWith('/');
+    const normalizedPath = path.normalize();
+    // Allow absolute paths but prevent directory traversal
+    return !normalizedPath.includes('..');
   }
 
   /**
