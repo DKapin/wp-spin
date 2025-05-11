@@ -45,7 +45,7 @@ export default class Shell extends BaseCommand {
     try {
       // Check if project exists
       if (!fs.existsSync(path.join(projectPath, 'docker-compose.yml'))) {
-        this.error('No WordPress project found in current directory');
+        throw new Error('No WordPress project found in this directory or any parent directory.');
       }
 
       // Check Docker environment
@@ -66,13 +66,15 @@ export default class Shell extends BaseCommand {
             tryShell('bash');
           } else if (code === 127 && shellCmd === 'bash') {
             console.log("Neither 'sh' nor 'bash' found in the container. No shell available.");
-            process.exit(127);
+            throw new Error('Neither \'sh\' nor \'bash\' found in the container. No shell available.');
           } else {
             console.log('Shell session ended.');
-            process.exit(code ?? 0);
+
+            throw new Error(`Shell session ended with code ${code ?? 0}`);
           }
         });
       };
+      
       tryShell('sh');
 
     } catch (error) {

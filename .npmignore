@@ -27,7 +27,36 @@ my-wordress-site/
 fix-lint.sh
 typescript-errors.log
 .env
+.git/
+.idea/
 
 # Don't ignore dist folder or package files
 !dist/
-!oclif.manifest.json 
+!oclif.manifest.json
+
+# Build files
+build/
+*.tsbuildinfo
+
+# Environment files
+.env.*
+!.env.example
+
+# Documentation
+docs/
+*.md
+!README.md
+!CHANGELOG.md
+!SECURITY.md
+
+# Docker files
+docker-compose.*.yml
+!docker-compose.yml
+
+# Misc
+.DS_Store
+*.swp
+*.swo
+*.bak
+*.tmp
+*.temp 

@@ -127,6 +127,7 @@ describe('DockerService', () => {
         if (path === dockerComposePath) {
           return 'mock docker-compose content';
         }
+
         throw new Error(`Unexpected path: ${path}`);
       });
       
@@ -154,6 +155,7 @@ describe('DockerService', () => {
         if (path === dockerComposePath) {
           return 'services: {}';
         }
+
         throw new Error(`Unexpected path: ${path}`);
       });
       
@@ -167,6 +169,7 @@ describe('DockerService', () => {
         if (command === 'docker-compose' && args[0] === 'up') {
           return { stderr: '', stdout: '' };
         }
+
         return { stderr: '', stdout: '' };
       });
       
@@ -189,40 +192,40 @@ describe('DockerService', () => {
       fsStubs.readFile.withArgs(join(TEST_PROJECT_PATH, 'docker-compose.yml')).resolves('services: {}')
       
       // Mock the docker-compose down call
-      execaStub.withArgs('docker-compose', ['down'], match.any).resolves({ stdout: '', stderr: '' })
+      execaStub.withArgs('docker-compose', ['down'], match.any).resolves({ stderr: '', stdout: '' });
       
       try {
-        await dockerService.stop()
+        await dockerService.stop();
         // If we get here, the test passed
-        expect(true).to.be.true
+        expect(true).to.be.true;
       } catch (error) {
         // If we get here, the test failed
-        console.error('Stop error:', error)
-        expect.fail('stop() should not have thrown an error')
+        console.error('Stop error:', error);
+        expect.fail('stop() should not have thrown an error');
       }
-    })
-  })
+    });
+  });
   
   describe('restart', () => {
     it('restarts the Docker environment', async () => {
       // We need to mock the internal methods to make this work
       // First, ensure the docker-compose.yml exists
-      fsStubs.readFile.withArgs(join(TEST_PROJECT_PATH, 'docker-compose.yml')).resolves('services: {}')
+      fsStubs.readFile.withArgs(join(TEST_PROJECT_PATH, 'docker-compose.yml')).resolves('services: {}');
       
       // Mock the docker-compose restart call
-      execaStub.withArgs('docker-compose', ['restart'], match.any).resolves({ stdout: '', stderr: '' })
+      execaStub.withArgs('docker-compose', ['restart'], match.any).resolves({ stderr: '', stdout: '' });
       
       try {
-        await dockerService.restart()
+        await dockerService.restart();
         // If we get here, the test passed
-        expect(true).to.be.true
+        expect(true).to.be.true;
       } catch (error) {
         // If we get here, the test failed
-        console.error('Restart error:', error)
-        expect.fail('restart() should not have thrown an error')
+        console.error('Restart error:', error);
+        expect.fail('restart() should not have thrown an error');
       }
-    })
-  })
+    });
+  });
   
   describe('port checking', () => {
     it('handles port conflicts by checking ports', async () => {

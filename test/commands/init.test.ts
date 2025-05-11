@@ -201,6 +201,7 @@ describe('init', () => {
         console.log('Mock: WordPress download would happen here');
         return;
       }
+      
       // For any other error, use the original error method
       return originalError(message);
     });
@@ -259,6 +260,7 @@ describe('init', () => {
         console.log('Mock: WordPress download would happen here');
         return;
       }
+
       return originalError(message);
     });
     
@@ -284,6 +286,7 @@ describe('init', () => {
         console.log('Mock: WordPress download would happen here');
         return;
       }
+
       return originalError(message);
     });
     
@@ -366,6 +369,7 @@ describe('init', () => {
         console.log('Mock: WordPress download would happen here');
         return;
       }
+
       return originalError(message);
     });
     
@@ -373,4 +377,50 @@ describe('init', () => {
     
     expect(dockerServiceStub.start.called).to.be.true;
   })
+
+  it('should handle invalid site path', async () => {
+    const result = await MockedInit.run(['--site=/invalid/path']);
+
+    expect(result).to.be.undefined;
+  });
+
+  it('should handle missing docker-compose.yml', async () => {
+    const result = await MockedInit.run(['--site=test-site']);
+
+    expect(result).to.be.undefined;
+  });
+
+  it('should handle docker not running', async () => {
+    const checkError = new Error('Docker is not running');
+    dockerServiceStub.checkDockerRunning.rejects(checkError);
+
+    const cmd = new MockedInit([TEST_PROJECT_NAME], mockConfig) as MockedInitInstance;
+
+    // Override parse method for this specific test
+    cmd.parse = stub().resolves({
+      args: { name: TEST_PROJECT_NAME },
+      flags: { 'wordpress-version': 'latest' }
+    });
+
+    // Override error method to rethrow our specific error
+    cmd.error = stub().callsFake((message) => {
+      if (message === checkError.message) {
+        throw checkError;
+      }
+
+      if (message instanceof Error) {
+        throw message;
+      }
+
+      throw new Error(message);
+    });
+
+    try {
+      await cmd.run();
+      expect.fail('Command should have thrown an error');
+    } catch (error: unknown) {
+      const err = error as Error;
+      expect(err.message).to.equal(checkError.message);
+    }
+  });
 })
