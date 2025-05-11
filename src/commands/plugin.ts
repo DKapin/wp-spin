@@ -9,7 +9,6 @@ export default class Plugin extends BaseCommand {
     '<%= config.bin %> plugin --add woocommerce --version 8.0.0',
     '<%= config.bin %> plugin --remove woocommerce',
   ]
-  static hidden = false
   static flags = {
     add: Flags.string({
       char: 'a',
@@ -32,6 +31,8 @@ export default class Plugin extends BaseCommand {
       description: 'Plugin version to install (only used with --add)',
     }),
   }
+  static hidden = false
+
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(Plugin)

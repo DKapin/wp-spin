@@ -113,13 +113,18 @@ wp-spin includes several security enhancements:
 <!-- commands -->
 * [`wp-spin containers`](#wp-spin-containers)
 * [`wp-spin init NAME`](#wp-spin-init-name)
+* [`wp-spin logs`](#wp-spin-logs)
+* [`wp-spin plugin`](#wp-spin-plugin)
 * [`wp-spin ps`](#wp-spin-ps)
 * [`wp-spin restart`](#wp-spin-restart)
 * [`wp-spin share`](#wp-spin-share)
+* [`wp-spin shell`](#wp-spin-shell)
 * [`wp-spin sites ACTION [NAME] [PATH]`](#wp-spin-sites-action-name-path)
 * [`wp-spin start`](#wp-spin-start)
 * [`wp-spin status`](#wp-spin-status)
 * [`wp-spin stop`](#wp-spin-stop)
+* [`wp-spin theme`](#wp-spin-theme)
+* [`wp-spin unshare`](#wp-spin-unshare)
 
 ## `wp-spin containers`
 
@@ -176,7 +181,65 @@ EXAMPLES
   $ wp-spin init my-wordpress-site --site-name=pretty          # Creates a site with a friendly name "pretty"
 ```
 
-_See code: [src/commands/init.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/init.ts)_
+_See code: [src/commands/init.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/init.ts)_
+
+## `wp-spin logs`
+
+View logs from a specific container (wordpress, mysql, or phpmyadmin)
+
+```
+USAGE
+  $ wp-spin logs [-s <value>] [-c wordpress|mysql|phpmyadmin]
+
+FLAGS
+  -c, --container=<option>  [default: wordpress] Container to target (wordpress, mysql, phpmyadmin)
+                            <options: wordpress|mysql|phpmyadmin>
+  -s, --site=<value>        Site path or site name
+
+DESCRIPTION
+  View logs from a specific container (wordpress, mysql, or phpmyadmin)
+
+EXAMPLES
+  $ wp-spin logs
+
+  $ wp-spin logs --container=mysql
+
+  $ wp-spin logs --container=phpmyadmin
+
+  $ wp-spin logs --container=wordpress
+
+  $ wp-spin logs --container=mysql --site=my-wp-site
+```
+
+_See code: [src/commands/logs.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/logs.ts)_
+
+## `wp-spin plugin`
+
+Manage WordPress plugins
+
+```
+USAGE
+  $ wp-spin plugin [-s <value>] [-f] [-v <value> [-a <value> | -r <value>]]
+
+FLAGS
+  -a, --add=<value>      Name of the plugin to install
+  -f, --force            Force operation even if plugin exists/does not exist
+  -r, --remove=<value>   Name of the plugin to remove
+  -s, --site=<value>     Site path or site name
+  -v, --version=<value>  Plugin version to install (only used with --add)
+
+DESCRIPTION
+  Manage WordPress plugins
+
+EXAMPLES
+  $ wp-spin plugin --add woocommerce
+
+  $ wp-spin plugin --add woocommerce --version 8.0.0
+
+  $ wp-spin plugin --remove woocommerce
+```
+
+_See code: [src/commands/plugin.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/plugin.ts)_
 
 ## `wp-spin ps`
 
@@ -204,7 +267,7 @@ EXAMPLES
   $ wp-spin ps --site=/path/to/my-site
 ```
 
-_See code: [src/commands/ps.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/ps.ts)_
+_See code: [src/commands/ps.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/ps.ts)_
 
 ## `wp-spin restart`
 
@@ -224,7 +287,7 @@ EXAMPLES
   $ wp-spin restart
 ```
 
-_See code: [src/commands/restart.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/restart.ts)_
+_See code: [src/commands/restart.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/restart.ts)_
 
 ## `wp-spin share`
 
@@ -254,7 +317,37 @@ EXAMPLES
   $ wp-spin share --domain=mysite.ngrok-free.app
 ```
 
-_See code: [src/commands/share.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/share.ts)_
+_See code: [src/commands/share.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/share.ts)_
+
+## `wp-spin shell`
+
+Open a shell in a specific container (wordpress, mysql, or phpmyadmin)
+
+```
+USAGE
+  $ wp-spin shell [-s <value>] [-c wordpress|mysql|phpmyadmin]
+
+FLAGS
+  -c, --container=<option>  [default: wordpress] Container to target (wordpress, mysql, phpmyadmin)
+                            <options: wordpress|mysql|phpmyadmin>
+  -s, --site=<value>        Site path or site name
+
+DESCRIPTION
+  Open a shell in a specific container (wordpress, mysql, or phpmyadmin)
+
+EXAMPLES
+  $ wp-spin shell
+
+  $ wp-spin shell --container=mysql
+
+  $ wp-spin shell --container=phpmyadmin
+
+  $ wp-spin shell --container=wordpress
+
+  $ wp-spin shell --container=mysql --site=my-wp-site
+```
+
+_See code: [src/commands/shell.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/shell.ts)_
 
 ## `wp-spin sites ACTION [NAME] [PATH]`
 
@@ -282,7 +375,7 @@ EXAMPLES
   $ wp-spin sites update my-site /new/path/to/site
 ```
 
-_See code: [src/commands/sites.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/sites.ts)_
+_See code: [src/commands/sites.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/sites.ts)_
 
 ## `wp-spin start`
 
@@ -306,7 +399,7 @@ EXAMPLES
   $ wp-spin start --site=/path/to/my-site
 ```
 
-_See code: [src/commands/start.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/start.ts)_
+_See code: [src/commands/start.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/start.ts)_
 
 ## `wp-spin status`
 
@@ -334,7 +427,7 @@ EXAMPLES
   $ wp-spin ps --site=/path/to/my-site
 ```
 
-_See code: [src/commands/status.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/status.ts)_
+_See code: [src/commands/status.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/status.ts)_
 
 ## `wp-spin stop`
 
@@ -356,7 +449,61 @@ EXAMPLES
   $ wp-spin stop --site=./path/to/wordpress
 ```
 
-_See code: [src/commands/stop.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.0/src/commands/stop.ts)_
+_See code: [src/commands/stop.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/stop.ts)_
+
+## `wp-spin theme`
+
+Manage WordPress themes
+
+```
+USAGE
+  $ wp-spin theme [-s <value>] [-f] [-v <value> [-a <value> | -r <value>]]
+
+FLAGS
+  -a, --add=<value>      Name of the theme to install
+  -f, --force            Force operation even if theme exists/does not exist
+  -r, --remove=<value>   Name of the theme to remove
+  -s, --site=<value>     Site path or site name
+  -v, --version=<value>  Theme version to install (only used with --add)
+
+DESCRIPTION
+  Manage WordPress themes
+
+EXAMPLES
+  $ wp-spin theme --add twentytwentyfour
+
+  $ wp-spin theme --add twentytwentyfour --version 1.0.0
+
+  $ wp-spin theme --remove twentytwentyfour
+```
+
+_See code: [src/commands/theme.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/theme.ts)_
+
+## `wp-spin unshare`
+
+Stop sharing your WordPress site through ngrok
+
+```
+USAGE
+  $ wp-spin unshare [-s <value>] [-d] [-f]
+
+FLAGS
+  -d, --debug         Show debugging information
+  -f, --force         Force kill ngrok processes without restoring WordPress configuration
+  -s, --site=<value>  Site path or site name
+
+DESCRIPTION
+  Stop sharing your WordPress site through ngrok
+
+EXAMPLES
+  $ wp-spin unshare
+
+  $ wp-spin unshare --force
+
+  $ wp-spin unshare --site=my-site
+```
+
+_See code: [src/commands/unshare.ts](https://github.com/danielkapin/wp-spin/blob/v0.1.1/src/commands/unshare.ts)_
 <!-- commandsstop -->
 
 ## Development Workflow

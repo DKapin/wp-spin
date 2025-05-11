@@ -5,7 +5,6 @@ import { BaseCommand } from './base.js'
 export default class Theme extends BaseCommand {
   static description = 'Manage WordPress themes'
   static examples = ['<%= config.bin %> theme --add twentytwentyfour', '<%= config.bin %> theme --add twentytwentyfour --version 1.0.0', '<%= config.bin %> theme --remove twentytwentyfour']
-  static hidden = false
   static flags = {
     add: Flags.string({
       char: 'a',
@@ -28,6 +27,7 @@ export default class Theme extends BaseCommand {
       description: 'Theme version to install (only used with --add)',
     }),
   }
+  static hidden = false
 
   public async run(): Promise<void> {
     const {flags} = await this.parse(Theme)
