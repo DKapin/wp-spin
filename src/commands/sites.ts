@@ -199,6 +199,55 @@ export default class Sites extends Command {
   }
   
   /**
+   * Execute the command
+   */
+  public async run(): Promise<void> {
+    const { args } = await this.parse(Sites);
+    
+    switch (args.action) {
+      case 'list': {
+        await this.listSites();
+        break;
+      }
+      
+      case 'name': {
+        if (!args.name) {
+          this.error('Site name is required for name action');
+        }
+        
+        if (!args.path) {
+          this.error('Site path is required for name action');
+        }
+        
+        await this.nameSite(args.name, args.path);
+        break;
+      }
+      
+      case 'remove': {
+        if (!args.name) {
+          this.error('Site name is required for remove action');
+        }
+        
+        await this.removeSite(args.name);
+        break;
+      }
+      
+      case 'update': {
+        if (!args.name) {
+          this.error('Site name is required for update action');
+        }
+        
+        if (!args.path) {
+          this.error('Site path is required for update action');
+        }
+        
+        await this.updateSite(args.name, args.path);
+        break;
+      }
+    }
+  }
+
+  /**
    * Remove a site
    */
   private async removeSite(name: string): Promise<void> {
@@ -275,52 +324,6 @@ export default class Sites extends Command {
       console.log(`You can now use ${chalk.blue(`--site=${name}`)} with any wp-spin command.`);
     } else {
       spinner.fail(`Failed to update site "${name}"`);
-    }
-  }
-
-  async run(): Promise<void> {
-    const { args } = await this.parse(Sites);
-    
-    switch (args.action) {
-      case 'list': {
-        await this.listSites();
-        break;
-      }
-      
-      case 'name': {
-        if (!args.name) {
-          this.error('Site name is required for name action');
-        }
-        
-        if (!args.path) {
-          this.error('Site path is required for name action');
-        }
-        
-        await this.nameSite(args.name, args.path);
-        break;
-      }
-      
-      case 'remove': {
-        if (!args.name) {
-          this.error('Site name is required for remove action');
-        }
-        
-        await this.removeSite(args.name);
-        break;
-      }
-      
-      case 'update': {
-        if (!args.name) {
-          this.error('Site name is required for update action');
-        }
-        
-        if (!args.path) {
-          this.error('Site path is required for update action');
-        }
-        
-        await this.updateSite(args.name, args.path);
-        break;
-      }
     }
   }
 } 

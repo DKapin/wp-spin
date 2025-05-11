@@ -217,245 +217,134 @@ export default class Share extends BaseCommand {
     // Check if ngrok is already running
     const ngrokRunning = await this.checkNgrokRunning();
     if (ngrokRunning) {
-      spinner.fail('ngrok is already running');
-      
-      console.log(chalk.yellow('\nAn ngrok tunnel appears to be already running.'));
-      console.log('This can happen if:');
-      console.log('1. You have another wp-spin share instance active');
-      console.log('2. You have another ngrok tunnel running elsewhere');
-      console.log('\nVisit http://localhost:4040 to see the currently running tunnel.');
-      console.log('\nYou can try to stop the current ngrok process with:');
-      console.log(chalk.blue('  wp-spin unshare'));
-      console.log('\nOr manually kill the ngrok process with:');
-      console.log(chalk.blue('  pkill -f ngrok    # On macOS/Linux'));
-      console.log(chalk.blue('  taskkill /F /IM ngrok.exe    # On Windows'));
-      
-      // Ask if they want to try stopping the existing process
-      try {
-        const prompt = createPromptModule();
-        const responses = await prompt([
-          {
-            default: true,
-            message: 'Would you like to attempt to stop the running ngrok process?',
-            name: 'shouldStop',
-            type: 'confirm',
-          },
-        ]);
-        
-        if (responses.shouldStop) {
-          const stopped = await this.killRunningNgrok(spinner);
-          if (!stopped) {
-            this.error('Could not stop the running ngrok process. Please try stopping it manually.');
-          }
-        } else {
-          this.error('Operation cancelled. Please stop the running ngrok process before starting a new one.');
-        }
-      } catch {
-        this.error('Could not prompt for confirmation. Please stop the running ngrok process manually.');
-      }
+      await this.handleExistingNgrokTunnel(spinner);
     }
-    
-    // Generate ngrok command arguments
-    const ngrokArgs = ['http'];
-    
-    // Add auth token if provided
-    if (flags.auth) {
-      process.env.NGROK_AUTHTOKEN = flags.auth;
-    }
-    
-    // Add domain if provided
-    if (flags.domain) {
-      ngrokArgs.push('--domain', flags.domain);
-    }
-    
-    // Add CIDR allow/deny rules if provided
-    if (flags['cidr-allow']) {
-      for (const cidr of flags['cidr-allow']) {
-        ngrokArgs.push('--cidr-allow', cidr);
-      }
-    }
-    
-    if (flags['cidr-deny']) {
-      for (const cidr of flags['cidr-deny']) {
-        ngrokArgs.push('--cidr-deny', cidr);
-      }
-    }
-    
-    // Add port
-    ngrokArgs.push(port.toString());
-    
-    // Start ngrok tunnel
-    spinner.start(`Creating ngrok tunnel to http://localhost:${port}...`);
-    
-    try {
-      // Use direct command instead of npx
-      const ngrokCommand = flags.debug ? 'ngrok' : 'npx ngrok';
-      const stdioOption = flags.debug ? 'inherit' : 'pipe';
-      
-      let urlCheckInterval: NodeJS.Timeout | undefined;
-      let foundUrl = false;
-      let originalConfigBackup = false;
-      let successMessageShown = false;  // Add flag to track if we've shown the success message
-      
-      // Get WordPress container name from validateProjectContext
-      let wordpressContainer = '';
-      wordpressContainer = this.getContainerNames().wordpress;
-      if (!wordpressContainer) {
-        spinner.fail('Could not determine WordPress container name.');
-        this.error('Internal error: Failed to determine WordPress container name after validation.');
-      }
 
-      // Add debug output for ngrok command
-      if (flags.debug) {
-        console.log(`Running ngrok command: ${ngrokCommand} ${ngrokArgs.join(' ')}`);
+    // Start ngrok process
+    const ngrokProcess = await this.startNgrokProcess(port, flags, spinner);
+    if (!ngrokProcess) {
+      return;
+    }
+
+    // Get WordPress container name
+    const wordpressContainer = this.getContainerNames().wordpress;
+    let foundUrl = false;
+
+    // Handle ngrok output and URL detection
+    await this.handleNgrokOutput(
+      ngrokProcess,
+      flags,
+      spinner,
+      port,
+      wordpressContainer,
+      (url: string, backupCreated: boolean) => {
+        foundUrl = true;
+        this.currentNgrokUrl = url;
+        this.displaySuccessMessage(url, port, spinner, !backupCreated);
+      },
+      () => {
+        // Cleanup when done
+        if (ngrokProcess.pid) {
+          process.kill(ngrokProcess.pid);
+        }
       }
+    );
+  }
+
+  /**
+   * Handles the case when ngrok is already running
+   */
+  private async handleExistingNgrokTunnel(spinner: ReturnType<typeof ora>): Promise<void> {
+    spinner.fail('ngrok is already running');
+    
+    console.log(chalk.yellow('\nAn ngrok tunnel appears to be already running.'));
+    console.log('This can happen if:');
+    console.log('1. You have another wp-spin share instance active');
+    console.log('2. You have another ngrok tunnel running elsewhere');
+    console.log('\nVisit http://localhost:4040 to see the currently running tunnel.');
+    console.log('\nYou can try to stop the current ngrok process with:');
+    console.log(chalk.blue('  wp-spin unshare'));
+    console.log('\nOr manually kill the ngrok process with:');
+    console.log(chalk.blue('  pkill -f ngrok    # On macOS/Linux'));
+    console.log(chalk.blue('  taskkill /F /IM ngrok.exe    # On Windows'));
+    
+    const shouldStop = await this.promptToStopNgrok();
+    if (shouldStop) {
+      const stopped = await this.killRunningNgrok(spinner);
+      if (!stopped) {
+        this.error('Could not stop the running ngrok process. Please try stopping it manually.');
+      }
+    } else {
+      this.error('Please stop the running ngrok process before starting a new tunnel.');
+    }
+  }
+
+  /**
+   * Prompts the user to stop the running ngrok process
+   */
+  private async promptToStopNgrok(): Promise<boolean> {
+    try {
+      const prompt = createPromptModule();
+      const responses = await prompt([
+        {
+          default: true,
+          message: 'Would you like to attempt to stop the running ngrok process?',
+          name: 'shouldStop',
+          type: 'confirm',
+        },
+      ]);
+      return responses.shouldStop;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Starts the ngrok process with the given configuration
+   */
+  private async startNgrokProcess(port: number, flags: ShareFlags, spinner: ReturnType<typeof ora>): Promise<ChildProcess | null> {
+    try {
+      const args = this.buildNgrokArgs(port, flags);
+      spinner.start(`Creating ngrok tunnel to http://localhost:${port}...`);
       
-      // Run ngrok as a child process
-      const ngrokProcess = execa(ngrokCommand, ngrokArgs, {
+      // Use spawn instead of execa to get a proper ChildProcess
+      const { spawn } = await import('node:child_process');
+      return spawn('ngrok', args, {
         env: {
           ...process.env,
           FORCE_COLOR: '1',
         },
-        shell: true,
-        stdio: stdioOption,
+        stdio: ['inherit', 'pipe', 'pipe'],
       });
-
-      // Add timeout to detect if ngrok fails to start
-      const startupTimeout = setTimeout(() => {
-        if (!foundUrl) {
-          // Check if ngrok is actually running by checking the API
-          execa('curl', ['-s', 'http://localhost:4040/api/tunnels'])
-            .then(({ stdout }) => {
-              const tunnels = JSON.parse(stdout);
-              if (tunnels?.tunnels?.length > 0) {
-                // ngrok is actually running, just didn't output the URL in the expected format
-                const tunnelUrl = tunnels.tunnels[0].public_url;
-                if (tunnelUrl) {
-                  foundUrl = true;
-                  clearTimeout(startupTimeout);
-                  this.processNgrokUrl(tunnelUrl, flags, spinner, port, wordpressContainer, 
-                    (url, backup) => {
-                      foundUrl = true;
-                      originalConfigBackup = backup;
-                      if (!successMessageShown) {
-                        spinner.succeed(`ngrok tunnel created at ${this.makeClickable(url)}`);
-                        successMessageShown = true;
-                      }
-                    },
-                    () => {
-                      if (urlCheckInterval) {
-                        clearInterval(urlCheckInterval);
-                        urlCheckInterval = undefined;
-                      }
-                    }
-                  );
-                  return;
-                }
-              }
-
-              // If we get here, ngrok really did fail to start
-              spinner.fail('ngrok failed to start within 10 seconds');
-              console.log(chalk.yellow('\nPossible issues:'));
-              console.log('1. ngrok might be having connectivity issues');
-              console.log('2. The port might be in use');
-              console.log('3. There might be a network issue');
-              console.log('\nTry running with --debug flag for more information:');
-              console.log(chalk.blue('  wp-spin share --debug'));
-              ngrokProcess.kill();
-              this.error('ngrok failed to start');
-            })
-            .catch(() => {
-              // If we can't reach the API, ngrok really did fail
-              spinner.fail('ngrok failed to start within 10 seconds');
-              console.log(chalk.yellow('\nPossible issues:'));
-              console.log('1. ngrok might be having connectivity issues');
-              console.log('2. The port might be in use');
-              console.log('3. There might be a network issue');
-              console.log('\nTry running with --debug flag for more information:');
-              console.log(chalk.blue('  wp-spin share --debug'));
-              ngrokProcess.kill();
-              this.error('ngrok failed to start');
-            });
-        }
-      }, 10_000);
-      
-      if (!flags.debug) {
-        // Handle ngrok output and URL detection
-        await this.handleNgrokOutput(ngrokProcess, flags, spinner, port, wordpressContainer, 
-          (url, backup) => {
-            foundUrl = true;
-            originalConfigBackup = backup;
-            if (!successMessageShown) {
-              spinner.succeed(`ngrok tunnel created at ${this.makeClickable(url)}`);
-              successMessageShown = true;
-            }
-          }, 
-          () => {
-            if (urlCheckInterval) {
-              clearInterval(urlCheckInterval);
-              urlCheckInterval = undefined;
-            }
-          });
-        
-        // Set up a backup method to get the URL if not found in stdout
-        urlCheckInterval = this.setupUrlCheckInterval(
-          flags, spinner, port, wordpressContainer, () => foundUrl,
-          (url, backup) => {
-            foundUrl = true;
-            originalConfigBackup = backup;
-            if (!successMessageShown) {
-              spinner.succeed(`ngrok tunnel created at ${this.makeClickable(url)}`);
-              successMessageShown = true;
-            }
-          },
-          () => {
-            if (urlCheckInterval) {
-              clearInterval(urlCheckInterval);
-              urlCheckInterval = undefined;
-            }
-          }
-        );
-        
-        // After 15 seconds, if URL still not found but ngrok is running, show a fallback message
-        setTimeout(() => {
-          if (!foundUrl && urlCheckInterval) {
-            clearInterval(urlCheckInterval);
-            urlCheckInterval = undefined;
-            clearTimeout(startupTimeout);
-            if (!successMessageShown) {
-              spinner.succeed('ngrok tunnel appears to be running');
-              successMessageShown = true;
-            }
-            
-            console.log('\n🌎 Your site should be available through ngrok.');
-            console.log(chalk.blue('To find the URL, visit: http://localhost:4040'));
-            console.log('\n⚠️  Press Ctrl+C to stop sharing and close the tunnel');
-          }
-        }, 15_000);
-      }
-      
-      // Wait for ngrok to exit
-      await ngrokProcess;
-      
-      // Clean up the interval if it still exists
-      if (urlCheckInterval) {
-        clearInterval(urlCheckInterval);
-      }
-      
-      // Restore WordPress configuration if it was changed
-      if (!flags['no-fixurl'] && wordpressContainer && originalConfigBackup) {
-        try {
-          spinner.start('Restoring WordPress configuration...');
-          await this.restoreWordPressConfig(wordpressContainer, spinner);
-          spinner.succeed('WordPress configuration has been restored');
-        } catch {
-          spinner.warn('Failed to restore WordPress configuration');
-          console.log(chalk.yellow('You may need to manually restore your wp-config.php file.'));
-        }
-      }
     } catch (error) {
       await this.handleNgrokError(error, spinner);
+      return null;
     }
+  }
+
+  /**
+   * Builds the command line arguments for ngrok
+   */
+  private buildNgrokArgs(port: number, flags: ShareFlags): string[] {
+    const args = ['http', port.toString()];
+
+    if (flags.auth) {
+      args.push('--authtoken', flags.auth);
+    }
+
+    if (flags.domain) {
+      args.push('--domain', flags.domain);
+    }
+
+    if (flags['cidr-allow']?.length) {
+      args.push('--allow-cidr', flags['cidr-allow'].join(','));
+    }
+
+    if (flags['cidr-deny']?.length) {
+      args.push('--deny-cidr', flags['cidr-deny'].join(','));
+    }
+
+    return args;
   }
 
   /**

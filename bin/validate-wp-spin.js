@@ -32,6 +32,7 @@ function handleError(message, suggestion) {
   if (suggestion) {
     console.log(`${colors.yellow}${suggestion}${colors.reset}`);
   }
+  
   throw new Error(message);
 }
 
