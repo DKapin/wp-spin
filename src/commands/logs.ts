@@ -24,6 +24,7 @@ export default class Logs extends BaseCommand {
       options: ['wordpress', 'mysql', 'phpmyadmin'],
     }),
   };
+  static hidden = false
   protected docker: DockerService;
 
   constructor(argv: string[], config: Config) {
