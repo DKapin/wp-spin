@@ -4,7 +4,8 @@ import { BaseCommand } from './base.js'
 
 export default class Theme extends BaseCommand {
   static description = 'Manage WordPress themes'
-static examples = ['<%= config.bin %> theme --add twentytwentyfour', '<%= config.bin %> theme --add twentytwentyfour --version 1.0.0', '<%= config.bin %> theme --remove twentytwentyfour']
+  static examples = ['<%= config.bin %> theme --add twentytwentyfour', '<%= config.bin %> theme --add twentytwentyfour --version 1.0.0', '<%= config.bin %> theme --remove twentytwentyfour']
+  static hidden = false
   static flags = {
     add: Flags.string({
       char: 'a',

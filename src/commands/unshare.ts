@@ -8,12 +8,13 @@ import { BaseCommand } from './base.js';
 
 export default class Unshare extends BaseCommand {
   static description = 'Stop sharing your WordPress site through ngrok';
-static examples = [
+  static examples = [
     '$ wp-spin unshare',
     '$ wp-spin unshare --force',
     '$ wp-spin unshare --site=my-site',
   ];
-static flags = {
+  static hidden = false
+  static flags = {
     ...BaseCommand.baseFlags,
     debug: Flags.boolean({
       char: 'd',
