@@ -13,7 +13,6 @@ export default class Unshare extends BaseCommand {
     '$ wp-spin unshare --force',
     '$ wp-spin unshare --site=my-site',
   ];
-  static hidden = false
   static flags = {
     ...BaseCommand.baseFlags,
     debug: Flags.boolean({
@@ -27,6 +26,8 @@ export default class Unshare extends BaseCommand {
       description: 'Force kill ngrok processes without restoring WordPress configuration',
     }),
   };
+  static hidden = false
+
 
   async run(): Promise<void> {
     const spinner = ora('Checking for running ngrok tunnels...');
