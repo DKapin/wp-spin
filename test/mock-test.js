@@ -66,6 +66,7 @@ try {
       } else {
         execSync(`rm -rf "${testDir}"`, { stdio: 'ignore' });
       }
+      
       console.log("✨ Cleanup complete");
     } catch (error) {
       console.error("Failed to clean up test directory:", error.message);
