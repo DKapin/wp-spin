@@ -1,13 +1,13 @@
 {
   "name": "wp-spin",
   "description": "A CLI tool for managing Docker-based WordPress environments",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "author": "Daniel Kapin",
   "bin": {
     "wp-spin": "bin/run.js",
     "wpspin": "bin/run.js"
   },
-  "bugs": "https://github.com/danielkapin/wp-spin/issues",
+  "bugs": "https://github.com/DKapin/wp-spin/issues",
   "dependencies": {
     "@oclif/core": "^4",
     "@oclif/plugin-help": "^6",
@@ -65,7 +65,7 @@
     "README.md",
     "LICENSE"
   ],
-  "homepage": "https://github.com/danielkapin/wp-spin",
+  "homepage": "https://github.com/DKapin/wp-spin",
   "keywords": [
     "oclif",
     "wordpress",
@@ -92,13 +92,13 @@
     "ts": true,
     "update": {
       "s3": {
-        "host": "github.com/danielkapin/wp-spin/releases/download/latest"
+        "host": "github.com/DKapin/wp-spin/releases/download/latest"
       }
     }
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/danielkapin/wp-spin.git"
+    "url": "git+https://github.com/DKapin/wp-spin.git"
   },
   "scripts": {
     "clean": "shx rm -rf dist oclif.manifest.json",
