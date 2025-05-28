@@ -11,7 +11,7 @@
   "dependencies": {
     "@oclif/core": "^4",
     "@oclif/plugin-help": "^6",
-    "@oclif/plugin-plugins": "^5",
+    "@oclif/plugin-plugins": "^5.4.37",
     "@types/fs-extra": "^11.0.4",
     "boxen": "^8.0.1",
     "chalk": "^5.4.1",
