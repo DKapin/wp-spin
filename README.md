@@ -112,7 +112,6 @@ wp-spin includes several security enhancements:
 
 <!-- commands -->
 * [`wp-spin containers`](#wp-spin-containers)
-* [`wp-spin init NAME`](#wp-spin-init-name)
 * [`wp-spin logs`](#wp-spin-logs)
 * [`wp-spin plugin`](#wp-spin-plugin)
 * [`wp-spin ps`](#wp-spin-ps)
@@ -120,7 +119,6 @@ wp-spin includes several security enhancements:
 * [`wp-spin share`](#wp-spin-share)
 * [`wp-spin shell`](#wp-spin-shell)
 * [`wp-spin sites ACTION [NAME] [PATH]`](#wp-spin-sites-action-name-path)
-* [`wp-spin start`](#wp-spin-start)
 * [`wp-spin status`](#wp-spin-status)
 * [`wp-spin stop`](#wp-spin-stop)
 * [`wp-spin theme`](#wp-spin-theme)
@@ -132,10 +130,11 @@ Show status of Docker containers for this project
 
 ```
 USAGE
-  $ wp-spin containers [-s <value>]
+  $ wp-spin containers [-d <value>] [-s <value>]
 
 FLAGS
-  -s, --site=<value>  Site path or site name
+  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
+  -s, --site=<value>    Site path or site name
 
 DESCRIPTION
   Show status of Docker containers for this project
@@ -152,48 +151,18 @@ EXAMPLES
   $ wp-spin ps --site=/path/to/my-site
 ```
 
-## `wp-spin init NAME`
-
-Initialize a new WordPress project with your choice of WordPress version
-
-```
-USAGE
-  $ wp-spin init NAME [-f] [-s <value>] [-w <value>]
-
-ARGUMENTS
-  NAME  Project name
-
-FLAGS
-  -f, --force                      Force initialization even if directory exists
-  -s, --site-name=<value>          Site name/alias to register for easy reference with --site flag
-  -w, --wordpress-version=<value>  [default: latest] WordPress version to install (e.g., 6.2, 5.9.3, latest). Use
-                                   specific version numbers like "6.4.2" for a precise release, or "latest" for the most
-                                   recent version.
-
-DESCRIPTION
-  Initialize a new WordPress project with your choice of WordPress version
-
-EXAMPLES
-  $ wp-spin init my-wordpress-site                             # Uses latest WordPress version
-
-  $ wp-spin init my-wordpress-site --wordpress-version=6.4.2   # Installs specific WordPress version 6.4.2
-
-  $ wp-spin init my-wordpress-site --site-name=pretty          # Creates a site with a friendly name "pretty"
-```
-
-_See code: [src/commands/init.ts](https://github.com/DKapin/wp-spin/blob/v0.1.4/src/commands/init.ts)_
-
 ## `wp-spin logs`
 
 View logs from a specific container (wordpress, mysql, or phpmyadmin)
 
 ```
 USAGE
-  $ wp-spin logs [-s <value>] [-c wordpress|mysql|phpmyadmin]
+  $ wp-spin logs [-d <value>] [-s <value>] [-c wordpress|mysql|phpmyadmin]
 
 FLAGS
   -c, --container=<option>  [default: wordpress] Container to target (wordpress, mysql, phpmyadmin)
                             <options: wordpress|mysql|phpmyadmin>
+  -d, --domain=<value>      Custom domain for the site (e.g., example.test)
   -s, --site=<value>        Site path or site name
 
 DESCRIPTION
@@ -219,10 +188,11 @@ Manage WordPress plugins
 
 ```
 USAGE
-  $ wp-spin plugin [-s <value>] [-f] [-v <value> [-a <value> | -r <value>]]
+  $ wp-spin plugin [-d <value>] [-s <value>] [-f] [-v <value> [-a <value> | -r <value>]]
 
 FLAGS
   -a, --add=<value>      Name of the plugin to install
+  -d, --domain=<value>   Custom domain for the site (e.g., example.test)
   -f, --force            Force operation even if plugin exists/does not exist
   -r, --remove=<value>   Name of the plugin to remove
   -s, --site=<value>     Site path or site name
@@ -247,10 +217,11 @@ Show status of Docker containers for this project
 
 ```
 USAGE
-  $ wp-spin ps [-s <value>]
+  $ wp-spin ps [-d <value>] [-s <value>]
 
 FLAGS
-  -s, --site=<value>  Site path or site name
+  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
+  -s, --site=<value>    Site path or site name
 
 DESCRIPTION
   Show status of Docker containers for this project
@@ -275,10 +246,11 @@ Restart the WordPress environment
 
 ```
 USAGE
-  $ wp-spin restart [-s <value>]
+  $ wp-spin restart [-d <value>] [-s <value>]
 
 FLAGS
-  -s, --site=<value>  Site path or site name
+  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
+  -s, --site=<value>    Site path or site name
 
 DESCRIPTION
   Restart the WordPress environment
@@ -295,7 +267,7 @@ Share your WordPress site publicly using ngrok
 
 ```
 USAGE
-  $ wp-spin share [-s <value>] [-a <value>] [-A <value>...] [-D <value>...] [-d] [-d <value>] [-u] [-p
+  $ wp-spin share [-d <value>] [-s <value>] [-a <value>] [-A <value>...] [-D <value>...] [-d] [-u] [-p
     <value>]
 
 FLAGS
@@ -325,11 +297,12 @@ Open a shell in a specific container (wordpress, mysql, or phpmyadmin)
 
 ```
 USAGE
-  $ wp-spin shell [-s <value>] [-c wordpress|mysql|phpmyadmin]
+  $ wp-spin shell [-d <value>] [-s <value>] [-c wordpress|mysql|phpmyadmin]
 
 FLAGS
   -c, --container=<option>  [default: wordpress] Container to target (wordpress, mysql, phpmyadmin)
                             <options: wordpress|mysql|phpmyadmin>
+  -d, --domain=<value>      Custom domain for the site (e.g., example.test)
   -s, --site=<value>        Site path or site name
 
 DESCRIPTION
@@ -377,40 +350,17 @@ EXAMPLES
 
 _See code: [src/commands/sites.ts](https://github.com/DKapin/wp-spin/blob/v0.1.4/src/commands/sites.ts)_
 
-## `wp-spin start`
-
-Start the WordPress environment
-
-```
-USAGE
-  $ wp-spin start [-s <value>]
-
-FLAGS
-  -s, --site=<value>  Site path or site name
-
-DESCRIPTION
-  Start the WordPress environment
-
-EXAMPLES
-  $ wp-spin start
-
-  $ wp-spin start --site=my-site
-
-  $ wp-spin start --site=/path/to/my-site
-```
-
-_See code: [src/commands/start.ts](https://github.com/DKapin/wp-spin/blob/v0.1.4/src/commands/start.ts)_
-
 ## `wp-spin status`
 
 Show status of Docker containers for this project
 
 ```
 USAGE
-  $ wp-spin status [-s <value>]
+  $ wp-spin status [-d <value>] [-s <value>]
 
 FLAGS
-  -s, --site=<value>  Site path or site name
+  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
+  -s, --site=<value>    Site path or site name
 
 DESCRIPTION
   Show status of Docker containers for this project
@@ -435,10 +385,11 @@ Stop the WordPress environment
 
 ```
 USAGE
-  $ wp-spin stop [-s <value>]
+  $ wp-spin stop [-d <value>] [-s <value>]
 
 FLAGS
-  -s, --site=<value>  Site path or site name
+  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
+  -s, --site=<value>    Site path or site name
 
 DESCRIPTION
   Stop the WordPress environment
@@ -457,10 +408,11 @@ Manage WordPress themes
 
 ```
 USAGE
-  $ wp-spin theme [-s <value>] [-f] [-v <value> [-a <value> | -r <value>]]
+  $ wp-spin theme [-d <value>] [-s <value>] [-f] [-v <value> [-a <value> | -r <value>]]
 
 FLAGS
   -a, --add=<value>      Name of the theme to install
+  -d, --domain=<value>   Custom domain for the site (e.g., example.test)
   -f, --force            Force operation even if theme exists/does not exist
   -r, --remove=<value>   Name of the theme to remove
   -s, --site=<value>     Site path or site name
@@ -485,12 +437,13 @@ Stop sharing your WordPress site through ngrok
 
 ```
 USAGE
-  $ wp-spin unshare [-s <value>] [-d] [-f]
+  $ wp-spin unshare [-d <value>] [-s <value>] [-d] [-f]
 
 FLAGS
-  -d, --debug         Show debugging information
-  -f, --force         Force kill ngrok processes without restoring WordPress configuration
-  -s, --site=<value>  Site path or site name
+  -d, --debug           Show debugging information
+  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
+  -f, --force           Force kill ngrok processes without restoring WordPress configuration
+  -s, --site=<value>    Site path or site name
 
 DESCRIPTION
   Stop sharing your WordPress site through ngrok
