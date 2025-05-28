@@ -63,6 +63,11 @@ jobs:
           NEW_VERSION=$(node -p "require('./package.json').version")
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
+      - name: Push version commit and tag
+        run: |
+          git push origin HEAD
+          git push origin --tags
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
