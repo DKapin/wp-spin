@@ -7,8 +7,13 @@ import path from 'node:path';
 import { getSiteByName } from '../config/sites.js';
 import { IDockerService } from '../services/docker-interface.js';
 import { DockerService } from '../services/docker.js';
+import { NginxProxyService } from '../services/nginx-proxy.js';
 
 export const baseFlags = {
+  domain: Flags.string({
+    char: 'd',
+    description: 'Custom domain for the site (e.g., example.test)',
+  }),
   site: Flags.string({
     char: 's',
     description: 'Site path or site name',
@@ -27,6 +32,27 @@ export abstract class BaseCommand extends Command {
    * Docker service instance
    */
   protected docker!: IDockerService;
+  /**
+   * NGINX proxy service instance
+   */
+  protected nginxProxy!: NginxProxyService;
+
+  /**
+   * Configure custom domain if specified
+   */
+  protected async configureDomain(port: number): Promise<void> {
+    const { flags } = await this.parse(this.constructor as typeof Command);
+    
+    if (flags.domain) {
+      try {
+        await this.nginxProxy.addDomain(flags.domain, port);
+        this.log(`Configured custom domain: ${chalk.cyan(flags.domain)}`);
+        this.log(`You can access your site at: ${chalk.cyan(`http://${flags.domain}`)}`);
+      } catch (error) {
+        this.log(chalk.yellow(`Warning: Failed to configure custom domain: ${error instanceof Error ? error.message : String(error)}`));
+      }
+    }
+  }
 
   /**
    * Check if Docker is running and accessible
@@ -191,6 +217,11 @@ export abstract class BaseCommand extends Command {
 
       // Initialize Docker service with resolved path
       this.docker = new DockerService(resolvedPath, this);
+
+      // Initialize NGINX proxy service if domain is provided
+      if (flags.domain) {
+        this.nginxProxy = new NginxProxyService();
+      }
 
       // No need to check project exists since resolveSitePath already validated it
     } catch (error) {
