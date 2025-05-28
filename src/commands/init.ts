@@ -1,57 +1,57 @@
-import { Args, Command, Config, Flags } from '@oclif/core';
+import { Args, Config, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { execa } from 'execa';
 import fs from 'fs-extra';
 import { createPromptModule } from 'inquirer';
+import { execSync } from 'node:child_process';
 import crypto from 'node:crypto';
-import net from 'node:net';
 import { arch, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ora from 'ora';
+import net from 'net';
 
 import { DEFAULT_PORTS } from '../config/ports.js';
 import { addSite } from '../config/sites.js';
 import { DockerService } from '../services/docker.js';
+import { BaseCommand, baseFlags } from './base.js';
 
 // Define specific types to replace 'any'
 type Spinner = ReturnType<typeof ora>;
-type CommandFlags = Record<string, boolean | number | string | undefined>;
 
-// Define validation result type with proper field ordering
-interface ValidationResult {
-  issues: string[];
-  isValid: boolean;
-}
-
-export default class Init extends Command {
+export default class Init extends BaseCommand {
   static args = {
     name: Args.string({ description: 'Project name', required: true }),
   };
-static description = 'Initialize a new WordPress project with your choice of WordPress version';
-static examples = [
-    '$ wp-spin init my-wordpress-site                             # Uses latest WordPress version',
-    '$ wp-spin init my-wordpress-site --wordpress-version=6.4.2   # Installs specific WordPress version 6.4.2',
-    '$ wp-spin init my-wordpress-site --site-name=pretty          # Creates a site with a friendly name "pretty"',
+  static default = Init;
+  static description = 'Initialize a new WordPress development environment';
+  static examples = [
+    '$ wp-spin init my-site',
+    '$ wp-spin init my-site --site-name="My Site"',
+    '$ wp-spin init my-site --wordpress-version=6.4',
+    '$ wp-spin init my-site --domain=mysite.test',
   ];
-static flags = {
-    force: Flags.boolean({ 
-      char: 'f', 
-      description: 'Force initialization even if directory exists' 
+  static flags = {
+    ...baseFlags,
+    domain: Flags.string({
+      description: 'Custom domain to use for the WordPress site (e.g., mysite.test)',
+    }),
+    port: Flags.integer({
+      char: 'p',
+      default: 8080,
+      description: 'Port to run WordPress on',
     }),
     'site-name': Flags.string({
-      char: 's',
-      description: 'Site name/alias to register for easy reference with --site flag',
-      required: false,
+      description: 'Site name (defaults to project name)',
     }),
     'wordpress-version': Flags.string({
-      char: 'w',
       default: 'latest',
-      description: 'WordPress version to install (e.g., 6.2, 5.9.3, latest). Use specific version numbers like "6.4.2" for a precise release, or "latest" for the most recent version.',
-      required: false,
+      description: 'WordPress version to install',
     }),
+
   };
-protected docker: DockerService;
+  protected docker: DockerService;
   private mysqlInitScriptPath: string = '';
+  private projectPath: string = '';
   private wordpressVersion: string = 'latest';
 
   constructor(argv: string[], config: Config) {
@@ -61,6 +61,25 @@ protected docker: DockerService;
   
   // Methods in alphabetical order to satisfy perfectionist/sort-classes
   
+  protected async configureDomain(port: number): Promise<void> {
+    const { flags } = await this.parse(Init);
+    if (!flags.domain) return;
+
+    try {
+      console.log(chalk.yellow('\nSetting up local domain:'));
+      console.log(chalk.yellow('Adding domain to your computer\'s hosts file so it points to your WordPress container'));
+      console.log(chalk.yellow('\nYou will be prompted for your computer password to make this change.'));
+      
+      await this.nginxProxy.addDomain(flags.domain, port);
+
+      console.log(chalk.green('\nDomain configuration complete!'));
+      console.log(chalk.blue('Your WordPress site will be accessible at:'));
+      console.log(chalk.cyan(`  http://${flags.domain}`));
+    } catch (error) {
+      throw new Error(`Failed to configure domain: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   /**
    * Ensures Docker is installed and running correctly
    */
@@ -88,54 +107,61 @@ protected docker: DockerService;
    */
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Init);
-    const { name } = args;
-    
-    // Store the WordPress version from flag
-    this.wordpressVersion = flags['wordpress-version'] || 'latest';
-
-    const spinner = ora();
-    const projectPath = join(process.cwd(), name);
+    const spinner = ora('Initializing WordPress development environment').start();
 
     try {
-      // Show WordPress version being used
-      const versionDisplay = this.wordpressVersion === 'latest' ? 'latest version' : `version ${this.wordpressVersion}`;
-      spinner.info(`Initializing WordPress project with ${versionDisplay}`);
+      // Check system architecture
+      const architecture = arch();
+      spinner.info(`Detected architecture: ${architecture}`);
       
-      await this.prepareProjectDirectory(projectPath, flags.force);
-      await this.ensureDockerEnvironment();
-      
-      // Initialize Docker service with new project path
-      this.docker = new DockerService(projectPath);
-      
-      // Set up WordPress source
-      const wordpressPath = join(projectPath, 'wordpress');
-      await this.setupWordpressSource(wordpressPath, flags as CommandFlags, projectPath);
-      
-      // Setup Docker environment
-      await this.setupDockerEnvironment(projectPath, wordpressPath);
-      
-      // Register site if name provided or use directory name
-      const siteName = flags['site-name'] || name;
-      const siteAdded = addSite(siteName, projectPath);
-      
-      if (siteAdded) {
-        spinner.succeed(`Site registered with name: ${siteName}`);
-        console.log(`You can now use ${chalk.blue(`--site=${siteName}`)} with any wp-spin command.`);
-      } else {
-        spinner.warn(`Site "${siteName}" already exists. Using existing name.`);
-        console.log(`To update, use ${chalk.blue(`wp-spin sites update ${siteName} ${projectPath}`)}`);
+      if (architecture === 'arm64') {
+        spinner.info('ARM64 architecture detected - using ARM-compatible images');
       }
-      
-      // Display information to the user
-      await this.displayProjectInfo(projectPath, wordpressPath);
+
+      // Create project directory
+      const projectPath = join(process.cwd(), args.name);
+      if (fs.existsSync(projectPath)) {
+        throw new Error(`Directory ${args.name} already exists`);
+      }
+
+      fs.mkdirSync(projectPath, { recursive: true });
+      this.projectPath = projectPath; // Set the project path here
+
+      // Create docker-compose.yml with architecture-specific images
+      this.createDockerComposeFile(projectPath, flags.port);
+
+      // Initialize Docker service
+      this.docker = new DockerService(projectPath, this);
+
+      // Start containers
+      await this.docker.start();
+
+      // Wait for WordPress to be ready
+      spinner.text = 'Waiting for WordPress to be ready...';
+      await this.waitForWordPress();
+
+      // Install WordPress
+      spinner.text = 'Installing WordPress...';
+      await this.installWordPress(flags['site-name'] || args.name, flags['wordpress-version']);
+
+      // Configure custom domain if specified
+      if (flags.domain) {
+        spinner.text = 'Configuring custom domain...';
+        await this.configureDomain(flags.port);
+      }
+
+      // Add site to config
+      addSite(args.name, projectPath);
+
+      spinner.succeed('WordPress development environment initialized successfully!');
+
+      // Display project info
+      await this.displayProjectInfo(projectPath, flags.port);
 
     } catch (error) {
       spinner.fail('Failed to initialize project');
-      if (error instanceof Error) {
-        this.error(error.message);
-      }
-
-      this.error('Failed to initialize project');
+      this.prettyError(error instanceof Error ? error : new Error(String(error)));
+      this.exit(1);
     }
   }
   
@@ -287,163 +313,60 @@ protected docker: DockerService;
   /**
    * Creates a docker-compose.yml file for the WordPress project
    */
-  private async createDockerComposeFile(projectPath: string): Promise<void> {
-    // Get the default ports from our configuration
-    let wordpressPort = DEFAULT_PORTS.WORDPRESS;
-    let phpmyadminPort = DEFAULT_PORTS.PHPMYADMIN;
-    
-    // Apply any port mappings from the Docker service
-    const portMappings = this.docker.getPortMappings();
-    
-    // Apply port mappings if available - use type assertions to avoid type errors
-    if (portMappings[DEFAULT_PORTS.WORDPRESS]) {
-      wordpressPort = portMappings[DEFAULT_PORTS.WORDPRESS] as typeof DEFAULT_PORTS.WORDPRESS;
-    }
-    
-    if (portMappings[DEFAULT_PORTS.PHPMYADMIN]) {
-      phpmyadminPort = portMappings[DEFAULT_PORTS.PHPMYADMIN] as typeof DEFAULT_PORTS.PHPMYADMIN;
-    }
-    
-    // Ensure that we don't use the same port for both services
-    // Convert to number before comparison
-    if (Number(wordpressPort) === Number(phpmyadminPort)) {
-      // If they're the same, increment one of them
-      phpmyadminPort = (Number(wordpressPort) + 1) as typeof DEFAULT_PORTS.PHPMYADMIN;
-      
-      // Verify this new port is actually available
-      try {
-        // Use node:net import instead of require
-        const server = net.createServer();
-        await new Promise<void>((resolve) => {
-          server.once('error', () => {
-            phpmyadminPort = (Number(phpmyadminPort) + 1) as typeof DEFAULT_PORTS.PHPMYADMIN; // increment again if there's an error
-            resolve();
-          });
-          
-          server.once('listening', () => {
-            server.close();
-            resolve();
-          });
-          
-          server.listen(Number(phpmyadminPort)); // Convert to number for the server
-        });
-      } catch {
-        // If there's any error, just increment to be safe
-        phpmyadminPort = (Number(phpmyadminPort) + 1) as typeof DEFAULT_PORTS.PHPMYADMIN;
-      }
-    }
-
-    // Get project folder name for unique container names
-    const projectName = projectPath.split('/').pop() || 'wp-spin';
-    
-    // Get platform-specific images with the specified WordPress version
+  private async createDockerComposeFile(projectPath: string, port: number): Promise<void> {
+    const dockerComposePath = join(projectPath, 'docker-compose.yml');
     const architecture = arch();
     const isArm = architecture === 'arm64';
-    const wordpressImageTag = this.wordpressVersion === 'latest' ? 'latest' : this.wordpressVersion;
     
-    // Set the WordPress image based on architecture and version
-    const wordpressImage = isArm 
-      ? `arm64v8/wordpress:${wordpressImageTag}` 
-      : `wordpress:${wordpressImageTag}`;
-
-    const dockerComposeContent = `version: '3.8'
+    // Find available ports
+    const availableWordPressPort = await this.findAvailablePort(port);
+    const availablePhpMyAdminPort = await this.findAvailablePort(availableWordPressPort + 2);
+    
+    const dockerCompose = `
+version: '3'
 
 services:
   wordpress:
-    image: ${wordpressImage}
-    container_name: ${projectName}_wordpress
-    restart: unless-stopped
-    environment:
-      - WORDPRESS_DB_HOST=mysql
-      - WORDPRESS_DB_USER=wordpress
-      - WORDPRESS_DB_PASSWORD=\${WORDPRESS_DB_PASSWORD}
-      - WORDPRESS_DB_NAME=wordpress
-    volumes:
-      - ./wordpress:/var/www/html
+    image: ${isArm ? 'arm64v8/wordpress:latest' : 'wordpress:latest'}
+    platform: ${isArm ? 'linux/arm64/v8' : 'linux/amd64'}
     ports:
-      - "${wordpressPort}:80"
+      - "${availableWordPressPort}:80"
+    environment:
+      WORDPRESS_DB_HOST: mysql
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - ./wp-content:/var/www/html/wp-content
     depends_on:
       - mysql
-    security_opt:
-      - no-new-privileges:true
-    user: "www-data:www-data"
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-      - CHOWN
-      - SETGID
-      - SETUID
-    read_only: true
-    tmpfs:
-      - /tmp
-      - /run
-      - /run/lock
-      - /var/run/apache2
 
   mysql:
-    image: ${isArm ? 'mariadb:10.6' : 'mysql:8.0'}
-    container_name: ${projectName}_mysql
-    restart: unless-stopped
+    image: ${isArm ? 'mariadb:10.6' : 'mysql:5.7'}
+    platform: ${isArm ? 'linux/arm64/v8' : 'linux/amd64'}
     environment:
-      - MYSQL_DATABASE=wordpress
-      - MYSQL_USER=wordpress
-      - MYSQL_PASSWORD=\${MYSQL_PASSWORD}
-      - MYSQL_ROOT_PASSWORD=\${MYSQL_ROOT_PASSWORD}
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
     volumes:
-      - ./mysql:/var/lib/mysql
-      - ./mysql-files:/var/lib/mysql-files
-      - ./mysql-init:/docker-entrypoint-initdb.d
-    security_opt:
-      - no-new-privileges:true
-    # MariaDB is more tolerant with ARM platforms
-    tmpfs:
-      - /tmp
-      - /run
-      - /run/mysqld
+      - mysql_data:/var/lib/mysql
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
-    platform: linux/amd64
-    container_name: ${projectName}_phpmyadmin
-    restart: unless-stopped
-    environment:
-      - PMA_HOST=mysql
-      - PMA_USER=wordpress
-      - PMA_PASSWORD=\${MYSQL_PASSWORD}
+    platform: ${isArm ? 'linux/amd64' : 'linux/amd64'}
     ports:
-      - "${phpmyadminPort}:80"
+      - "${availablePhpMyAdminPort}:80"
+    environment:
+      PMA_HOST: mysql
     depends_on:
       - mysql
-    security_opt:
-      - no-new-privileges:true
-    user: "www-data:www-data"
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-      - CHOWN
-      - SETGID
-      - SETUID
-    read_only: true
-    tmpfs:
-      - /tmp
-      - /run
-      - /var/run/apache2
-      - /etc/phpmyadmin
-      - /run/lock
-      - /sessions`;
 
-    await fs.writeFile(join(projectPath, 'docker-compose.yml'), dockerComposeContent);
-    
-    // Update the Docker service with these final port mappings
-    if (wordpressPort !== DEFAULT_PORTS.WORDPRESS) {
-      await this.docker.updateDockerComposePorts(DEFAULT_PORTS.WORDPRESS, wordpressPort);
-    }
-    
-    if (phpmyadminPort !== DEFAULT_PORTS.PHPMYADMIN) {
-      await this.docker.updateDockerComposePorts(DEFAULT_PORTS.PHPMYADMIN, phpmyadminPort);
-    }
+volumes:
+  mysql_data:
+`;
+
+    fs.writeFileSync(dockerComposePath, dockerCompose.trim());
   }
   
   /**
@@ -593,52 +516,36 @@ FLUSH PRIVILEGES;
   /**
    * Displays information about the WordPress project after initialization
    */
-  private async displayProjectInfo(projectPath: string, _wordpressPath: string): Promise<void> {
-    const spinner = ora();
-    
-    try {
-      // Get list of all containers in this project
-      spinner.start('Getting project information...');
-      
-      // Get WordPress port from Docker service
-      const portMappings = this.docker.getPortMappings();
-      const wpPort = portMappings[DEFAULT_PORTS.WORDPRESS] || DEFAULT_PORTS.WORDPRESS;
-      
-      // Get name of current directory
-      const projectName = projectPath.split('/').pop() || 'wordpress-site';
-      
-      // Display info about how to access the site
-      const wpUrl = `http://localhost:${wpPort}`;
-      const adminUrl = `${wpUrl}/wp-admin`;
-      
-      spinner.succeed('WordPress environment is ready!');
-      
-      console.log('\n📊 Project Information:');
-      console.log(`🌐 Site URL: ${chalk.blue(wpUrl)}`);
-      console.log(`⚙️  Admin URL: ${chalk.blue(adminUrl)}`);
-      console.log(`📁 Project directory: ${chalk.blue(projectPath)}`);
-      
-      // Additional information
-      console.log('\n🚀 Getting Started:');
-      console.log(`👉 To start your WordPress site:  ${chalk.blue(`cd ${projectName} && wp-spin start`)}`);
-      console.log(`👉 To stop your WordPress site:   ${chalk.blue(`wp-spin stop`)}`);
-      console.log(`👉 To check container status:     ${chalk.blue(`wp-spin status`)}`);
-      console.log(`👉 To access shell:               ${chalk.blue(`wp-spin shell`)}`);
-      
-      console.log('\n🔐 Default Credentials:');
-      console.log(`👤 Admin username: ${chalk.blue('admin')}`);
-      console.log(`🔑 Admin password: ${chalk.blue('password')}`);
-      console.log('   (You should change these after first login)');
-      
-      console.log('\n🎯 Next Steps:');
-      console.log(`1. Browse to your WordPress site at ${chalk.blue(wpUrl)}`);
-      console.log('2. Complete the WordPress setup process');
-      console.log('3. Install your favorite plugins and themes using ' + chalk.blue('wp-spin plugin --add <name>') + ' and ' + chalk.blue('wp-spin theme --add <name>'));
-      
-    } catch (error) {
-      spinner.fail('Could not display complete project information');
-      console.error('Error:', error);
+  private async displayProjectInfo(projectPath: string, port: number): Promise<void> {
+    const { flags } = await this.parse(Init);
+    const wordpressPath = join(projectPath, 'wp-content');
+
+    this.log(`\nProject initialized at: ${chalk.cyan(projectPath)}`);
+    this.log(`WordPress files: ${chalk.cyan(wordpressPath)}`);
+    this.log(`\nYou can access your site at:`);
+    this.log(`  ${chalk.cyan(`http://localhost:${port}`)}`);
+    if (flags.domain) {
+      this.log(`  ${chalk.cyan(`http://${flags.domain}`)}`);
     }
+    
+    this.log(`\nWordPress admin:`);
+    this.log(`  ${chalk.cyan(`http://localhost:${port}/wp-admin`)}`);
+    if (flags.domain) {
+      this.log(`  ${chalk.cyan(`http://${flags.domain}/wp-admin`)}`);
+    }
+
+    this.log(`\nDefault credentials:`);
+    this.log(`  Username: ${chalk.cyan('admin')}`);
+    this.log(`  Password: ${chalk.cyan('password')}`);
+  }
+
+  private async findAvailablePort(startPort: number): Promise<number> {
+    const isAvailable = await this.isPortAvailable(startPort);
+    if (isAvailable) {
+      return startPort;
+    }
+    
+    return this.findAvailablePort(startPort + 1);
   }
   
   /**
@@ -788,6 +695,190 @@ FLUSH PRIVILEGES;
     
     return currentDir;
   }
+
+  private async installWordPress(siteName: string, _version: string): Promise<void> {
+    try {
+      // Get the project name from the path
+      const projectName = this.projectPath.split('/').pop() || 'wordpress';
+      const containerName = `${projectName}-wordpress-1`;
+      const { flags } = await this.parse(Init);
+
+      // Install WP-CLI properly for the container architecture
+      execSync(
+        `docker exec ${containerName} sh -c 'curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && chmod +x wp-cli.phar && mv wp-cli.phar /usr/local/bin/wp && wp --info'`,
+        { stdio: 'inherit' }
+      );
+
+      // Set permissions on existing directories (ignore errors if they don't exist)
+      execSync(
+        `docker exec ${containerName} sh -c 'chown -R www-data:www-data /var/www/html 2>/dev/null || true'`,
+        { stdio: 'inherit' }
+      );
+
+      // Ensure wp-content and its subdirectories exist with correct permissions
+      const subdirs = ['themes', 'plugins', 'uploads', 'upgrade'];
+      for (const dir of subdirs) {
+        execSync(
+          `docker exec ${containerName} sh -c 'mkdir -p /var/www/html/wp-content/${dir} 2>/dev/null || true && chown www-data:www-data /var/www/html/wp-content/${dir} 2>/dev/null || true'`,
+          { stdio: 'inherit' }
+        );
+      }
+
+      // Set final permissions (ignore errors)
+      execSync(
+        `docker exec ${containerName} sh -c 'chown -R www-data:www-data /var/www/html 2>/dev/null || true && find /var/www/html -type d -exec chmod 755 {} \\; 2>/dev/null || true && find /var/www/html -type f -exec chmod 644 {} \\; 2>/dev/null || true'`,
+        { stdio: 'inherit' }
+      );
+
+      // Check if wp-config.php exists and remove it if it does
+      try {
+        execSync(
+          `docker exec ${containerName} test -f /var/www/html/wp-config.php && docker exec ${containerName} rm /var/www/html/wp-config.php`,
+          { stdio: 'ignore' }
+        );
+      } catch {
+        // Ignore errors - file doesn't exist or couldn't be removed
+      }
+
+      // Create wp-config.php with debug settings
+      const configContent = `<?php
+define( 'DB_NAME', 'wordpress' );
+define( 'DB_USER', 'wordpress' );
+define( 'DB_PASSWORD', 'wordpress' );
+define( 'DB_HOST', 'mysql' );
+define( 'DB_CHARSET', 'utf8' );
+define( 'DB_COLLATE', '' );
+
+define( 'WP_DEBUG', true );
+define( 'WP_DEBUG_LOG', true );
+define( 'WP_DEBUG_DISPLAY', true );
+
+$table_prefix = 'wp_';
+
+define( 'WP_AUTO_UPDATE_CORE', true );
+
+if ( ! defined( 'ABSPATH' ) ) {
+    define( 'ABSPATH', __DIR__ . '/' );
+}
+
+require_once ABSPATH . 'wp-settings.php';`;
+
+      // Write config to a temporary file
+      const tempConfigPath = join(tmpdir(), 'wp-config.php');
+      fs.writeFileSync(tempConfigPath, configContent);
+
+      // Copy the config file into the container
+      execSync(
+        `docker cp ${tempConfigPath} ${containerName}:/var/www/html/wp-config.php`,
+        { stdio: 'inherit' }
+      );
+
+      // Clean up the temporary file
+      fs.unlinkSync(tempConfigPath);
+
+      // Create a PHP configuration file to increase memory limit
+      const phpConfigContent = `memory_limit = 512M
+max_execution_time = 300
+post_max_size = 64M
+upload_max_filesize = 64M`;
+
+      const tempPhpConfigPath = join(tmpdir(), 'php.ini');
+      fs.writeFileSync(tempPhpConfigPath, phpConfigContent);
+
+      // Copy PHP config into container
+      execSync(
+        `docker cp ${tempPhpConfigPath} ${containerName}:/usr/local/etc/php/conf.d/custom.ini`,
+        { stdio: 'inherit' }
+      );
+
+      // Clean up the temporary PHP config file
+      fs.unlinkSync(tempPhpConfigPath);
+
+      // Restart PHP-FPM to apply new settings
+      execSync(
+        `docker exec ${containerName} sh -c 'kill -USR2 1'`,
+        { stdio: 'inherit' }
+      );
+
+      // Ensure WordPress core files are present with increased memory limit
+      execSync(
+        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core download --force --allow-root'`,
+        { stdio: 'inherit' }
+      );
+
+      // Install WordPress using WP-CLI with the correct URL including port
+      execSync(
+        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core install --url=http://localhost:${flags.port} --title="${siteName}" --admin_user=admin --admin_password=password --admin_email=admin@example.com --allow-root'`,
+        { stdio: 'inherit' }
+      );
+
+      // Update site URL and home URL to include port
+      execSync(
+        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update home "http://localhost:${flags.port}" --allow-root'`,
+        { stdio: 'inherit' }
+      );
+      execSync(
+        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update siteurl "http://localhost:${flags.port}" --allow-root'`,
+        { stdio: 'inherit' }
+      );
+
+      // If domain is specified, add it to the allowed domains
+      if (flags.domain) {
+        execSync(
+          `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update siteurl "http://${flags.domain}" --allow-root'`,
+          { stdio: 'inherit' }
+        );
+        execSync(
+          `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update home "http://${flags.domain}" --allow-root'`,
+          { stdio: 'inherit' }
+        );
+      }
+
+      // Install and activate a default theme
+      execSync(
+        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp theme install twentytwentyfour --activate --allow-root'`,
+        { stdio: 'inherit' }
+      );
+
+      // Clear WordPress cache
+      execSync(
+        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp cache flush --allow-root'`,
+        { stdio: 'inherit' }
+      );
+
+      // Final permissions fix
+      execSync(
+        `docker exec ${containerName} sh -c 'chown -R www-data:www-data /var/www/html && find /var/www/html -type d -exec chmod 755 {} \\; && find /var/www/html -type f -exec chmod 644 {} \\;'`,
+        { stdio: 'inherit' }
+      );
+    } catch (error) {
+      throw new Error(`Failed to install WordPress: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  
+  private async isPortAvailable(port: number): Promise<boolean> {
+    try {
+      // Check if port is in use by Docker containers
+      const result = execSync(`docker ps --format "{{.Ports}}" | grep ":${port}->"`, { encoding: 'utf8' }).trim();
+      if (result) {
+        return false;
+      }
+
+      // Also check if port is in use by the system
+      return new Promise((resolve) => {
+        const server = net.createServer();
+        server.once('error', () => resolve(false));
+        server.once('listening', () => {
+          server.close();
+          resolve(true);
+        });
+        server.listen(port);
+      });
+    } catch {
+      // If grep doesn't find anything, the port is available
+      return true;
+    }
+  }
   
   /**
    * Merge WordPress core files into target directory
@@ -925,6 +1016,7 @@ desktop.ini
    */
   private async setupDockerEnvironment(projectPath: string, wordpressPath: string): Promise<void> {
     const spinner = ora();
+    const { flags } = await this.parse(Init);
     
     // Use DockerService's checkPorts method to handle port conflicts
     await this.docker.checkPorts();
@@ -936,7 +1028,7 @@ desktop.ini
 
     // Create docker-compose.yml with the correct ports
     spinner.start('Creating docker-compose.yml...');
-    await this.createDockerComposeFile(projectPath);
+    await this.createDockerComposeFile(projectPath, flags.port);
     spinner.succeed('docker-compose.yml created');
 
     // Create .env file
@@ -966,7 +1058,7 @@ desktop.ini
   /**
    * Set up WordPress source files
    */
-  private async setupWordpressSource(wordpressPath: string, flags: CommandFlags, projectPath: string): Promise<void> {
+  private async setupWordpressSource(wordpressPath: string, flags: Record<string, boolean | number | string | undefined>, projectPath: string): Promise<void> {
     const spinner = ora();
     const wordpressSourcePath: null | string = null;
 
@@ -1137,7 +1229,7 @@ desktop.ini
   /**
    * Validates a directory to check if it contains a valid WordPress installation
    */
-  private async validateWordPressDirectory(directoryPath: string): Promise<ValidationResult> {
+  private async validateWordPressDirectory(directoryPath: string): Promise<{ issues: string[]; isValid: boolean }> {
     const requiredFiles = ['wp-config.php', 'wp-content', 'wp-includes', 'wp-admin'];
     const issues: string[] = [];
     
@@ -1245,5 +1337,34 @@ RewriteRule . /index.php [L]
       console.error('Error verifying WordPress setup:', error);
       // Continue anyway - we've tried our best
     }
+  }
+
+  private async waitForWordPress(): Promise<void> {
+    const maxAttempts = 30;
+    const delay = 2000; // 2 seconds
+
+    const sleep = (ms: number) => new Promise<void>(resolve => {
+      setTimeout(resolve, ms);
+    });
+
+    const poll = async (attempt: number): Promise<void> => {
+      try {
+        const result = execSync('docker ps --filter "name=wordpress" --format "{{.Status}}"', { encoding: 'utf8' });
+        if (result.includes('Up')) {
+          return;
+        }
+      } catch {
+        // Ignore errors and keep trying
+      }
+
+      if (attempt >= maxAttempts) {
+        throw new Error('WordPress container failed to start');
+      }
+
+      await sleep(delay);
+      return poll(attempt + 1);
+    };
+
+    return poll(1);
   }
 }

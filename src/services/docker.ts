@@ -8,6 +8,7 @@ import * as net from 'node:net';
 import { arch, platform } from 'node:os';
 import { join } from 'node:path';
 import ora from 'ora';
+import { execSync } from 'child_process';
 
 import { DEFAULT_PORTS } from '../config/ports.js';
 import { IDockerService } from './docker-interface.js';
@@ -960,5 +961,15 @@ export class DockerService implements IDockerService {
       'MySQL failed to start within the expected time.',
       'Please check your Docker configuration and try again.'
     );
+  }
+
+  async getPort(service: string): Promise<number> {
+    try {
+      const result = execSync(`docker-compose port ${service} 80`, { cwd: this.projectPath }).toString();
+      const port = parseInt(result.split(':')[1], 10);
+      return port;
+    } catch (error) {
+      throw new Error(`Failed to get port for ${service}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 } 
