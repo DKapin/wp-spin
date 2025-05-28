@@ -9,12 +9,9 @@ import { IDockerService } from '../docker-interface.js';
  * Mock implementation of DockerService for testing
  */
 export class DockerService implements IDockerService {
-  // Dummy property to prevent linter warning for unused command parameter
-  private _unused?: Command;
-  // Properties to match the real Docker service
   private architecture = arch();
+  private command?: Command;
   private containers = new Map();
-  // Mock state properties
   private isRunning = true;
   private mockDiskSpace = true;
   private mockDockerComposeInstalled = true;
@@ -23,16 +20,19 @@ export class DockerService implements IDockerService {
   private mockMemory = true;
   private mockPortsAvailable = true;
   private platform = platform();
-  private portMappings: Record<number, number> = {};
   private projectExists = true;
   private projectPath: string;
   private spinner = ora();
+  private portMappings: Record<number, number> = {};
 
   constructor(projectPath: string, command?: Command) {
     this.projectPath = projectPath;
+    if (command) {
+      this.command = command;
+    }
     this.spinner.stop();
     // Silence the unused parameter warning
-    this._unused = command;
+    // this._unused = command;
     
     // If we're in the mock tests, ensure Docker is "running"
     if (process.env.USE_DOCKER_MOCK === 'true') {
@@ -197,8 +197,13 @@ export class DockerService implements IDockerService {
   }
 
   async updateDockerComposePorts(originalPort: number, newPort: number): Promise<void> {
-    this.portMappings[originalPort] = newPort;
+    // Mock implementation just logs the port change
     console.log(chalk.blue(`Mock: Port mapping stored: ${originalPort} -> ${newPort}`));
+  }
+
+  async getPort(_service: string): Promise<number> {
+    // Mock implementation returns a default port for testing
+    return 8080;
   }
 
   // Helper methods for the mock
