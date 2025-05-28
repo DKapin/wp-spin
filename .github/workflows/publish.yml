@@ -68,6 +68,9 @@ jobs:
           git push origin HEAD
           git push origin --tags
 
+      - name: Fetch tags
+        run: git fetch --tags
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
