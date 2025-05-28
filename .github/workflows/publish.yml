@@ -65,13 +65,16 @@ jobs:
 
       - name: Push version commit and tag
         run: |
-          # Ensure the tag is created
+          # Ensure the tag is created only if it doesn't exist
           NEW_VERSION=$(node -p "require('./package.json').version")
-          git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
-          
-          # Push both the commit and the tag
+          if git tag --list | grep -q "v$NEW_VERSION"; then
+            echo "Tag v$NEW_VERSION already exists. Skipping tag creation."
+          else
+            git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
+            git push origin "v$NEW_VERSION"
+          fi
+          # Push the commit
           git push origin HEAD
-          git push origin "v$NEW_VERSION"
 
 
       - name: Fetch tags
