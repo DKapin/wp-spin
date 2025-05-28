@@ -65,11 +65,13 @@ jobs:
 
       - name: Push version commit and tag
         run: |
-          git push origin HEAD
-
+          # Ensure the tag is created
           NEW_VERSION=$(node -p "require('./package.json').version")
-          git tag -fa "v$NEW_VERSION" -m "Release version $NEW_VERSION"
-          git push origin "v$NEW_VERSION" --force
+          git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
+          
+          # Push both the commit and the tag
+          git push origin HEAD
+          git push origin "v$NEW_VERSION"
 
 
       - name: Fetch tags
