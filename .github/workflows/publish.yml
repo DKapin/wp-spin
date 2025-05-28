@@ -68,12 +68,8 @@ jobs:
           git push origin HEAD
 
           NEW_VERSION=$(node -p "require('./package.json').version")
-          if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1; then
-            echo "Tag v$NEW_VERSION already exists. Skipping tag creation."
-          else
-            git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
-            git push origin "v$NEW_VERSION"
-          fi
+          git tag -fa "v$NEW_VERSION" -m "Release version $NEW_VERSION"
+          git push origin "v$NEW_VERSION" --force
 
 
       - name: Fetch tags
