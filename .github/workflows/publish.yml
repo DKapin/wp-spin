@@ -1,0 +1,73 @@
+name: Publish to NPM
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+jobs:
+  publish:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Get version
+        id: get_version
+        run: |
+          # Get the latest version from package.json
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Bump version
+        id: bump_version
+        run: |
+          # Get the PR title
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          
+          # Determine version bump type based on PR title
+          if [[ $PR_TITLE =~ ^(feat|feature) ]]; then
+            npm version minor
+          elif [[ $PR_TITLE =~ ^(fix|bugfix|bug) ]]; then
+            npm version patch
+          elif [[ $PR_TITLE =~ ^(breaking|major) ]]; then
+            npm version major
+          else
+            npm version patch
+          fi
+          
+          # Get the new version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release v${{ steps.bump_version.outputs.new_version }}
+          body: |
+            Changes in this Release:
+            ${{ github.event.pull_request.body }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to NPM
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }} 
