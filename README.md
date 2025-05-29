@@ -34,7 +34,7 @@ The easiest way to install wp-spin is through npm:
 npm install -g wp-spin
 ```
 
-After installation, verify it's working:
+After installation, verify that it's working:
 ```bash
 wp-spin --version
 ```
