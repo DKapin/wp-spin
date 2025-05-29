@@ -82,6 +82,23 @@ export default class Init extends BaseCommand {
     }
   }
 
+    // Add a new method to handle domain configuration with SSL
+    protected async configureDomainWithSSL(domain: string, port: number, ssl: boolean): Promise<void> {
+      try {
+        await this.nginxProxy.addDomain(domain, port, ssl);
+        console.log(chalk.green(`\nDomain configuration complete!`));
+        if (ssl) {
+          console.log(chalk.blue('Your WordPress site will be accessible at:'));
+          console.log(chalk.cyan(`  https://${domain}`));
+        } else {
+          console.log(chalk.blue('Your WordPress site will be accessible at:'));
+          console.log(chalk.cyan(`  http://${domain}`));
+        }
+      } catch (error) {
+        throw new Error(`Failed to configure domain: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
   /**
    * Ensures Docker is installed and running correctly
    */
@@ -155,6 +172,7 @@ export default class Init extends BaseCommand {
           await this.nginxProxy.generateSSLCert(flags.domain);
           ssl = true;
         }
+        
         await this.configureDomainWithSSL(flags.domain, flags.port, ssl);
       }
 
@@ -1375,22 +1393,5 @@ RewriteRule . /index.php [L]
     };
 
     return poll(1);
-  }
-
-  // Add a new method to handle domain configuration with SSL
-  protected async configureDomainWithSSL(domain: string, port: number, ssl: boolean): Promise<void> {
-    try {
-      await this.nginxProxy.addDomain(domain, port, ssl);
-      console.log(chalk.green(`\nDomain configuration complete!`));
-      if (ssl) {
-        console.log(chalk.blue('Your WordPress site will be accessible at:'));
-        console.log(chalk.cyan(`  https://${domain}`));
-      } else {
-        console.log(chalk.blue('Your WordPress site will be accessible at:'));
-        console.log(chalk.cyan(`  http://${domain}`));
-      }
-    } catch (error) {
-      throw new Error(`Failed to configure domain: ${error instanceof Error ? error.message : String(error)}`);
-    }
   }
 }
