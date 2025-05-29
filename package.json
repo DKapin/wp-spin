@@ -1,7 +1,7 @@
 {
   "name": "wp-spin",
   "description": "A CLI tool for managing Docker-based WordPress environments",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "author": "Daniel Kapin",
   "bin": {
     "wp-spin": "bin/run.js",
