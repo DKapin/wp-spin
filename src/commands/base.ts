@@ -38,23 +38,6 @@ export abstract class BaseCommand extends Command {
   protected nginxProxy!: NginxProxyService;
 
   /**
-   * Configure custom domain if specified
-   */
-  protected async configureDomain(port: number): Promise<void> {
-    const { flags } = await this.parse(this.constructor as typeof Command);
-    
-    if (flags.domain) {
-      try {
-        await this.nginxProxy.addDomain(flags.domain, port);
-        this.log(`Configured custom domain: ${chalk.cyan(flags.domain)}`);
-        this.log(`You can access your site at: ${chalk.cyan(`http://${flags.domain}`)}`);
-      } catch (error) {
-        this.log(chalk.yellow(`Warning: Failed to configure custom domain: ${error instanceof Error ? error.message : String(error)}`));
-      }
-    }
-  }
-
-  /**
    * Check if Docker is running and accessible
    */
   protected async checkDockerEnvironment(): Promise<void> {
@@ -81,6 +64,23 @@ export abstract class BaseCommand extends Command {
       }
 
       return false;
+    }
+  }
+
+  /**
+   * Configure custom domain if specified
+   */
+  protected async configureDomain(port: number): Promise<void> {
+    const { flags } = await this.parse(this.constructor as typeof Command);
+    
+    if (flags.domain) {
+      try {
+        await this.nginxProxy.addDomain(flags.domain, port);
+        this.log(`Configured custom domain: ${chalk.cyan(flags.domain)}`);
+        this.log(`You can access your site at: ${chalk.cyan(`http://${flags.domain}`)}`);
+      } catch (error) {
+        this.log(chalk.yellow(`Warning: Failed to configure custom domain: ${error instanceof Error ? error.message : String(error)}`));
+      }
     }
   }
 

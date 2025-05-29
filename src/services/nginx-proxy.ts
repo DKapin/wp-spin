@@ -52,6 +52,7 @@ http {
       if (fs.existsSync(configPath)) {
         fs.unlinkSync(configPath);
       }
+
       await this.ensureContainerRunning();
       this.removeHostsEntry(domain);
       await this.reloadNginx();
@@ -68,6 +69,7 @@ http {
       if (hostsContent.includes(hostsEntry)) {
         return;
       }
+
       try {
         execSync(`echo "${hostsEntry}" | sudo tee -a ${hostsFile}`, { stdio: 'inherit' });
       } catch {
@@ -79,6 +81,7 @@ http {
       if (error instanceof Error && error.message.includes('sudo')) {
         throw error;
       }
+
       throw new Error(`Failed to update /etc/hosts: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -102,10 +105,15 @@ http {
     const username = process.env.USER || process.env.USERNAME || 'root';
     let group: string;
 
-    if (process.platform === 'darwin') {
+    switch (process.platform) {
+    case 'darwin': {
       // On macOS, use the staff group
       group = 'staff';
-    } else if (process.platform === 'linux') {
+    
+    break;
+    }
+
+    case 'linux': {
       // On Linux, try to get the user's primary group
       try {
         group = execSync(`id -gn ${username}`, { encoding: 'utf8' }).trim();
@@ -113,7 +121,11 @@ http {
         // Fallback to username if we can't get the group
         group = username;
       }
-    } else if (process.platform === 'win32') {
+    
+    break;
+    }
+
+    case 'win32': {
       // On Windows, we don't use groups in the same way
       // Just use the username for both user and group
       group = username;
@@ -123,9 +135,14 @@ http {
       } catch (error) {
         console.warn('Warning: Failed to set Windows permissions:', error instanceof Error ? error.message : String(error));
       }
-    } else {
+    
+    break;
+    }
+
+    default: {
       // On other platforms, use the username as the group
       group = username;
+    }
     }
 
     // Only run chown on Unix-like systems
@@ -157,23 +174,6 @@ http {
     }
   }
 
-  private removeHostsEntry(domain: string): void {
-    const hostsFile = '/etc/hosts';
-    const hostsEntry = `127.0.0.1 ${domain}`;
-    const hostsContent = fs.readFileSync(hostsFile, 'utf8');
-    const newContent = hostsContent
-      .split('\n')
-      .filter(line => !line.includes(hostsEntry))
-      .join('\n');
-    try {
-      execSync(`echo "${newContent}" | sudo tee ${hostsFile}`, { stdio: 'inherit' });
-    } catch {
-      throw new Error(
-        `Failed to update /etc/hosts. You may need to run the command with sudo or manually remove this line from /etc/hosts:\n${hostsEntry}`
-      );
-    }
-  }
-
   private async isPortInUse(port: number): Promise<boolean> {
     return new Promise(resolve => {
       const server = net.createServer();
@@ -191,6 +191,23 @@ http {
       execSync(`docker exec ${this.containerName} nginx -s reload`, { stdio: 'inherit' });
     } catch (error) {
       throw new Error(`Failed to reload NGINX: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private removeHostsEntry(domain: string): void {
+    const hostsFile = '/etc/hosts';
+    const hostsEntry = `127.0.0.1 ${domain}`;
+    const hostsContent = fs.readFileSync(hostsFile, 'utf8');
+    const newContent = hostsContent
+      .split('\n')
+      .filter(line => !line.includes(hostsEntry))
+      .join('\n');
+    try {
+      execSync(`echo "${newContent}" | sudo tee ${hostsFile}`, { stdio: 'inherit' });
+    } catch {
+      throw new Error(
+        `Failed to update /etc/hosts. You may need to run the command with sudo or manually remove this line from /etc/hosts:\n${hostsEntry}`
+      );
     }
   }
 
