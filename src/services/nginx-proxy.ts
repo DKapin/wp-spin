@@ -1,9 +1,9 @@
+import { execa } from 'execa';
 import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import net from 'node:net';
 import * as os from 'node:os';
 import { join } from 'node:path';
-import { execa } from 'execa';
 
 export class NginxProxyService {
   private readonly certsDir: string;
@@ -50,6 +50,18 @@ http {
     }
   }
 
+  public async generateSSLCert(domain: string): Promise<{ cert: string, key: string }> {
+    const hostCertPath = join(this.certsDir, `${domain}.pem`);
+    const hostKeyPath = join(this.certsDir, `${domain}-key.pem`);
+    if (!fs.existsSync(hostCertPath) || !fs.existsSync(hostKeyPath)) {
+      // Run mkcert to generate cert and key in the host certs dir
+      await execa('mkcert', ['-cert-file', hostCertPath, '-key-file', hostKeyPath, domain], { stdio: 'inherit' });
+    }
+
+    // Return container paths for nginx config
+    return { cert: `/etc/nginx/certs/${domain}.pem`, key: `/etc/nginx/certs/${domain}-key.pem` };
+  }
+
   public async removeDomain(domain: string): Promise<void> {
     try {
       const configPath = join(this.configDir, 'conf.d', `${domain}.conf`);
@@ -87,6 +99,30 @@ http {
       }
 
       throw new Error(`Failed to update /etc/hosts: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private ensureCertsDir(): void {
+    if (!fs.existsSync(this.certsDir)) {
+      execSync(`sudo mkdir -p ${this.certsDir}`, { stdio: 'inherit' });
+    }
+
+    // Set permissions
+    const username = process.env.USER || process.env.USERNAME || 'root';
+
+    let group: string;
+    switch (process.platform) {
+      case 'darwin': { group = 'staff'; break; }
+      case 'linux': {
+        try { group = execSync(`id -gn ${username}`, { encoding: 'utf8' }).trim(); } catch { group = username; }
+        break;
+      }
+
+      default: { group = username; }
+    }
+
+    if (process.platform !== 'win32') {
+      execSync(`sudo chown -R ${username}:${group} ${this.certsDir}`, { stdio: 'inherit' });
     }
   }
 
@@ -153,37 +189,6 @@ http {
     if (process.platform !== 'win32') {
       execSync(`sudo chown -R ${username}:${group} ${this.configDir}`, { stdio: 'inherit' });
     }
-  }
-
-  private ensureCertsDir(): void {
-    if (!fs.existsSync(this.certsDir)) {
-      execSync(`sudo mkdir -p ${this.certsDir}`, { stdio: 'inherit' });
-    }
-    // Set permissions
-    const username = process.env.USER || process.env.USERNAME || 'root';
-    let group: string;
-    switch (process.platform) {
-      case 'darwin': { group = 'staff'; break; }
-      case 'linux': {
-        try { group = execSync(`id -gn ${username}`, { encoding: 'utf8' }).trim(); } catch { group = username; }
-        break;
-      }
-      default: { group = username; }
-    }
-    if (process.platform !== 'win32') {
-      execSync(`sudo chown -R ${username}:${group} ${this.certsDir}`, { stdio: 'inherit' });
-    }
-  }
-
-  public async generateSSLCert(domain: string): Promise<{ cert: string, key: string }> {
-    const hostCertPath = join(this.certsDir, `${domain}.pem`);
-    const hostKeyPath = join(this.certsDir, `${domain}-key.pem`);
-    if (!fs.existsSync(hostCertPath) || !fs.existsSync(hostKeyPath)) {
-      // Run mkcert to generate cert and key in the host certs dir
-      await execa('mkcert', ['-cert-file', hostCertPath, '-key-file', hostKeyPath, domain], { stdio: 'inherit' });
-    }
-    // Return container paths for nginx config
-    return { cert: `/etc/nginx/certs/${domain}.pem`, key: `/etc/nginx/certs/${domain}-key.pem` };
   }
 
   private async ensureContainerRunning(): Promise<void> {
@@ -287,7 +292,9 @@ server {
 }
 `;
     }
+
     const existingConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : '';
+
     if (existingConfig !== config) {
       execSync(`echo '${config}' | sudo tee ${configPath}`, { stdio: 'inherit' });
     }
