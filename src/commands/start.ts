@@ -6,13 +6,12 @@ import { BaseCommand, baseFlags } from './base.js';
 export default class Start extends BaseCommand {
   static default = Start;
   static description = 'Start a WordPress development environment';
-
-  static flags = {
+static flags = {
     ...baseFlags,
     port: Flags.integer({
       char: 'p',
-      description: 'Port to run WordPress on',
       default: 8080,
+      description: 'Port to run WordPress on',
     }),
   };
 

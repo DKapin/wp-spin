@@ -5,12 +5,11 @@ import fs from 'fs-extra';
 import { createPromptModule } from 'inquirer';
 import { execSync } from 'node:child_process';
 import crypto from 'node:crypto';
+import net from 'node:net';
 import { arch, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ora from 'ora';
-import net from 'net';
 
-import { DEFAULT_PORTS } from '../config/ports.js';
 import { addSite } from '../config/sites.js';
 import { DockerService } from '../services/docker.js';
 import { BaseCommand, baseFlags } from './base.js';
