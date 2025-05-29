@@ -42,11 +42,14 @@ export default class Init extends BaseCommand {
     'site-name': Flags.string({
       description: 'Site name (defaults to project name)',
     }),
+    ssl: Flags.boolean({
+      default: false,
+      description: 'Generate a local SSL certificate for your custom domain using mkcert (requires mkcert to be installed)',
+    }),
     'wordpress-version': Flags.string({
       default: 'latest',
       description: 'WordPress version to install',
     }),
-
   };
   protected docker: DockerService;
   private mysqlInitScriptPath: string = '';
@@ -146,7 +149,13 @@ export default class Init extends BaseCommand {
       // Configure custom domain if specified
       if (flags.domain) {
         spinner.text = 'Configuring custom domain...';
-        await this.configureDomain(flags.port);
+        let ssl = false;
+        if (flags.ssl) {
+          spinner.text = 'Generating local SSL certificate with mkcert...';
+          await this.nginxProxy.generateSSLCert(flags.domain);
+          ssl = true;
+        }
+        await this.configureDomainWithSSL(flags.domain, flags.port, ssl);
       }
 
       // Add site to config
@@ -518,19 +527,20 @@ FLUSH PRIVILEGES;
   private async displayProjectInfo(projectPath: string, port: number): Promise<void> {
     const { flags } = await this.parse(Init);
     const wordpressPath = join(projectPath, 'wp-content');
+    const protocol = flags.ssl ? 'https' : 'http';
 
     this.log(`\nProject initialized at: ${chalk.cyan(projectPath)}`);
     this.log(`WordPress files: ${chalk.cyan(wordpressPath)}`);
     this.log(`\nYou can access your site at:`);
-    this.log(`  ${chalk.cyan(`http://localhost:${port}`)}`);
+    this.log(`  ${chalk.cyan(`${protocol}://localhost:${port}`)}`);
     if (flags.domain) {
-      this.log(`  ${chalk.cyan(`http://${flags.domain}`)}`);
+      this.log(`  ${chalk.cyan(`${protocol}://${flags.domain}`)}`);
     }
     
     this.log(`\nWordPress admin:`);
-    this.log(`  ${chalk.cyan(`http://localhost:${port}/wp-admin`)}`);
+    this.log(`  ${chalk.cyan(`${protocol}://localhost:${port}/wp-admin`)}`);
     if (flags.domain) {
-      this.log(`  ${chalk.cyan(`http://${flags.domain}/wp-admin`)}`);
+      this.log(`  ${chalk.cyan(`${protocol}://${flags.domain}/wp-admin`)}`);
     }
 
     this.log(`\nDefault credentials:`);
@@ -1365,5 +1375,22 @@ RewriteRule . /index.php [L]
     };
 
     return poll(1);
+  }
+
+  // Add a new method to handle domain configuration with SSL
+  protected async configureDomainWithSSL(domain: string, port: number, ssl: boolean): Promise<void> {
+    try {
+      await this.nginxProxy.addDomain(domain, port, ssl);
+      console.log(chalk.green(`\nDomain configuration complete!`));
+      if (ssl) {
+        console.log(chalk.blue('Your WordPress site will be accessible at:'));
+        console.log(chalk.cyan(`  https://${domain}`));
+      } else {
+        console.log(chalk.blue('Your WordPress site will be accessible at:'));
+        console.log(chalk.cyan(`  http://${domain}`));
+      }
+    } catch (error) {
+      throw new Error(`Failed to configure domain: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }
