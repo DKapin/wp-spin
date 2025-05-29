@@ -66,13 +66,17 @@ jobs:
       - name: Push version commit and tag
         run: |
           NEW_VERSION=$(node -p "require('./package.json').version")
-          if git tag --list | grep -q "v$NEW_VERSION"; then
-            echo "Tag v$NEW_VERSION already exists. Skipping tag creation."
+          # Check if the tag exists on the remote
+          if git ls-remote --tags origin | grep -q "refs/tags/v$NEW_VERSION"; then
+            echo "Tag v$NEW_VERSION already exists on the remote. Skipping tag creation."
           else
-            git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
+            # Create the tag if it doesn't exist
+            if ! git tag --list | grep -q "v$NEW_VERSION"; then
+              git tag -a "v$NEW_VERSION" -m "Release version $NEW_VERSION"
+            fi
+            # Push the commit and tag
+            git push origin HEAD --tags
           fi
-          # Push both commit and tag in one command
-          git push origin HEAD --tags
 
 
       - name: Fetch tags
