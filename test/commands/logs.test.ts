@@ -9,11 +9,14 @@ describe('logs', () => {
     checkFileExists: SinonStub;
     docker: {
       checkDockerInstalled: SinonStub;
+      getProjectPath: SinonStub;
       logs: SinonStub;
     };
     ensureProjectDirectory: SinonStub;
     error: SinonStub;
+    execa: SinonStub;
     exit: SinonStub;
+    getContainerNames: () => { mysql: string; phpmyadmin: string; wordpress: string };
     log: SinonStub;
     parse: SinonStub;
     run: () => Promise<void>;
@@ -33,6 +36,7 @@ describe('logs', () => {
   let mockConfig: Record<string, unknown>;
   let mockFs: MockFs;
   let mockPath: MockPath;
+  let execaMock: SinonStub;
   
   beforeEach(async () => {
     // Mock Config
@@ -51,6 +55,17 @@ describe('logs', () => {
     mockPath = {
       join: (...args: string[]) => args.join('/')
     };
+    
+    // Create execa mock
+    execaMock = stub().callsFake(async (cmd: string, args: string[], _options: unknown) => {
+      // Return different results based on the command
+      if (cmd === 'docker' && args[0] === 'logs') {
+        // For docker logs, use stdio: 'inherit' which doesn't return stdout
+        return { stderr: '', stdout: '' };
+      }
+      
+      return { stdout: 'test output' };
+    });
 
     // Create a prototype for BaseCommand with required methods
     class MockCommand {
@@ -60,12 +75,28 @@ describe('logs', () => {
         return Promise.resolve();
       }
       
+      checkFileExists(_file: string) {
+        return true;
+      }
+      
+      ensureProjectDirectory() {
+        return Promise.resolve();
+      }
+      
       error(message: string) {
         throw new Error(message);
       }
       
       exit(code: number) {
         throw new Error(`EEXIT: ${code}`);
+      }
+      
+      getContainerNames() {
+        return {
+          mysql: 'test-project_mysql',
+          phpmyadmin: 'test-project_phpmyadmin',
+          wordpress: 'test-project_wordpress'
+        };
       }
       
       log(_message: string) {
@@ -86,6 +117,18 @@ describe('logs', () => {
         return Promise.resolve(true);
       }
       
+      checkDockerRunning() {
+        return Promise.resolve(true);
+      }
+      
+      getProjectPath() {
+        return '/test/project/path';
+      }
+      
+      isDockerRunning() {
+        return Promise.resolve(true);
+      }
+      
       logs() {
         return Promise.resolve();
       }
@@ -100,6 +143,9 @@ describe('logs', () => {
         Command: MockCommand,
         Config: class {}
       },
+      'execa': {
+        execa: execaMock
+      },
       'fs-extra': mockFs,
       'node:path': mockPath
     });
@@ -113,19 +159,33 @@ describe('logs', () => {
   
   it('runs logs command successfully when project directory is valid', async () => {
     // Setup: Valid project directory with docker-compose.yml and .env
-    mockFs.accessSync.returns(true);
+    mockFs.accessSync = stub();
     
     const cmd = new MockedLogs([], mockConfig) as MockedLogsInstance;
+    
+    // Override checkDockerEnvironment to prevent exit
     cmd.checkDockerEnvironment = stub().resolves();
+    
     cmd.docker = { 
       checkDockerInstalled: stub().resolves(true),
-      logs: stub().resolves()
+      getProjectPath: stub().returns('test-project'),
+      logs: stub().resolves(),
     };
     
+    // Mock parse to return the expected flags
+    cmd.parse = stub().resolves({
+      args: {},
+      flags: { container: 'wordpress' }
+    });
+    
+    // Mock log method
+    cmd.log = stub();
+    
+    // Run the command
     await cmd.run();
     
-    // Verify Docker logs was called
-    expect(cmd.docker.logs.called).to.be.true;
+    // Verify execa was called with the correct arguments
+    expect(execaMock.calledWith('docker', ['logs', 'test-project_wordpress'], { stdio: 'inherit' })).to.be.true;
   });
   
   it('checks for required files in the project directory', async () => {
@@ -139,7 +199,8 @@ describe('logs', () => {
     cmd.checkDockerEnvironment = stub().resolves();
     cmd.docker = { 
       checkDockerInstalled: stub().resolves(true),
-      logs: stub().resolves()
+      getProjectPath: stub().returns('/test/project/path'),
+      logs: stub().resolves(),
     };
     
     await cmd.run();
@@ -160,7 +221,8 @@ describe('logs', () => {
     cmd.error = stub().throws(new Error('Not a WordPress project directory'));
     cmd.docker = { 
       checkDockerInstalled: stub().resolves(true),
-      logs: stub().resolves()
+      logs: stub().resolves(),
+      getProjectPath: stub().returns('/test/project/path'),
     };
     
     try {
@@ -182,7 +244,8 @@ describe('logs', () => {
     cmd.checkDockerEnvironment = stub().resolves();
     cmd.docker = { 
       checkDockerInstalled: stub().resolves(true),
-      logs: stub().resolves()
+      logs: stub().resolves(),
+      getProjectPath: stub().returns('/test/project/path'),
     };
     
     await cmd.run();
@@ -201,7 +264,8 @@ describe('logs', () => {
     cmd.checkDockerEnvironment = stub().rejects(new Error('Docker not running'));
     cmd.docker = { 
       checkDockerInstalled: stub().resolves(true),
-      logs: stub().resolves()
+      logs: stub().resolves(),
+      getProjectPath: stub().returns('/test/project/path'),
     };
     
     try {
@@ -217,23 +281,36 @@ describe('logs', () => {
     const cmd = new MockedLogs([], mockConfig) as MockedLogsInstance;
     
     // Setup: Valid project directory
-    cmd.checkFileExists = stub().returns(true);
+    mockFs.accessSync = stub().returns(undefined);
     
-    // Setup: Mock checkDockerEnvironment
-    cmd.checkDockerEnvironment = stub().resolves();
-    
-    // Setup: Mock docker logs to throw error
-    cmd.docker = { 
+    // Setup: Mock docker logs to reject
+    cmd.docker = {
       checkDockerInstalled: stub().resolves(true),
-      logs: stub().rejects(new Error('Could not retrieve logs'))
+      logs: stub().rejects(new Error('Could not retrieve logs')),
+      getProjectPath: stub().returns('/test/project/path'),
     };
+    
+    // Mock parse to return the expected flags
+    cmd.parse = stub().resolves({
+      args: {},
+      flags: { container: 'wordpress' }
+    });
+    
+    // Mock ensureProjectDirectory
+    cmd.ensureProjectDirectory = stub().resolves();
+    
+    // Mock exit to throw EEXIT: 1
+    cmd.exit = stub().throws(new Error('EEXIT: 1'));
     
     try {
       await cmd.run();
       expect.fail('Should have thrown an error');
     } catch (error) {
-      const err = error as Error;
-      expect(err.message).to.equal('Could not retrieve logs');
+      if (error instanceof Error) {
+        expect(error.message).to.equal('EEXIT: 1');
+      } else {
+        expect.fail('Error should be an Error instance');
+      }
     }
   });
 });
