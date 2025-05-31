@@ -528,8 +528,8 @@ describe('init', () => {
     cmd.parse = stub().resolves({
       args: { name: TEST_PROJECT_NAME },
       flags: { 
-        'site-name': 'Test Site',
         domain: 'test.local',
+        'site-name': 'Test Site',
         ssl: false,
         'wordpress-version': 'latest'
       }

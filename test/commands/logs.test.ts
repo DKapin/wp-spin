@@ -221,8 +221,8 @@ describe('logs', () => {
     cmd.error = stub().throws(new Error('Not a WordPress project directory'));
     cmd.docker = { 
       checkDockerInstalled: stub().resolves(true),
-      logs: stub().resolves(),
       getProjectPath: stub().returns('/test/project/path'),
+      logs: stub().resolves(),
     };
     
     try {
@@ -244,8 +244,8 @@ describe('logs', () => {
     cmd.checkDockerEnvironment = stub().resolves();
     cmd.docker = { 
       checkDockerInstalled: stub().resolves(true),
-      logs: stub().resolves(),
       getProjectPath: stub().returns('/test/project/path'),
+      logs: stub().resolves(),
     };
     
     await cmd.run();
@@ -264,8 +264,8 @@ describe('logs', () => {
     cmd.checkDockerEnvironment = stub().rejects(new Error('Docker not running'));
     cmd.docker = { 
       checkDockerInstalled: stub().resolves(true),
-      logs: stub().resolves(),
       getProjectPath: stub().returns('/test/project/path'),
+      logs: stub().resolves(),
     };
     
     try {
@@ -281,13 +281,13 @@ describe('logs', () => {
     const cmd = new MockedLogs([], mockConfig) as MockedLogsInstance;
     
     // Setup: Valid project directory
-    mockFs.accessSync = stub().returns(undefined);
+    mockFs.accessSync = stub();
     
     // Setup: Mock docker logs to reject
     cmd.docker = {
       checkDockerInstalled: stub().resolves(true),
-      logs: stub().rejects(new Error('Could not retrieve logs')),
       getProjectPath: stub().returns('/test/project/path'),
+      logs: stub().rejects(new Error('Could not retrieve logs')),
     };
     
     // Mock parse to return the expected flags

@@ -76,9 +76,6 @@ describe('shell', () => {
           string: stub().returns({})
         }
       },
-      'node:fs': {
-        existsSync: existsSyncStub
-      },
       'node:child_process': {
         spawn: stub().returns({
           on: stub().callsFake((event, cb) => {
@@ -87,6 +84,10 @@ describe('shell', () => {
           })
         })
       },
+      'node:fs': {
+        existsSync: existsSyncStub
+      },
+
       'ora': () => ({
         fail: stub(),
         info: stub(),

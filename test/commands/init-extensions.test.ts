@@ -42,13 +42,13 @@ describe('init command extensions', () => {
       displayProjectInfo: SinonStub;
       ensureDockerEnvironment: SinonStub;
       error: SinonStub;
+      exit: SinonStub;
       parse: SinonStub;
       prepareProjectDirectory: SinonStub;
       run: () => Promise<void>;
       setupDockerEnvironment: SinonStub;
       setupWordpressSource: SinonStub;
       validateWordPressDirectory: SinonStub;
-      exit: SinonStub;
     }
   };
   
