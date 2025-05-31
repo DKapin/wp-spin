@@ -258,21 +258,17 @@ http {
     const hostKeyPath = join(this.certsDir, `${domain}-key.pem`);
     const containerCertPath = `/etc/nginx/certs/${domain}.pem`;
     const containerKeyPath = `/etc/nginx/certs/${domain}-key.pem`;
-    let config = `
+    let config = '';
+    if (ssl && fs.existsSync(hostCertPath) && fs.existsSync(hostKeyPath)) {
+      // HTTP to HTTPS redirect
+      config += `
 server {
     listen 80;
     server_name ${domain};
-
-    location / {
-        proxy_pass http://host.docker.internal:${port};
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+    return 301 https://$server_name$request_uri;
 }
 `;
-    if (ssl && fs.existsSync(hostCertPath) && fs.existsSync(hostKeyPath)) {
+      // HTTPS server
       config += `
 server {
     listen 443 ssl;
@@ -281,6 +277,24 @@ server {
     ssl_certificate_key ${containerKeyPath};
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
+
+    location / {
+        proxy_pass http://host.docker.internal:${port};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Port 443;
+    }
+}
+`;
+    } else {
+      // HTTP only
+      config += `
+server {
+    listen 80;
+    server_name ${domain};
 
     location / {
         proxy_pass http://host.docker.internal:${port};

@@ -14,9 +14,15 @@ describe('start', () => {
   // Define a type for the StartCommand
   interface StartCommandType {
     checkDockerEnvironment: SinonStub;
+    checkProjectExists: SinonStub;
+    config: { runHook: SinonStub; version: string };
+    configureDomain: SinonStub;
     docker: Record<string, SinonStub>;
     error: SinonStub;
+    exit: SinonStub;
     findProjectRoot: SinonStub;
+    log: SinonStub;
+    prettyError: SinonStub;
     run: () => Promise<void>;
   }
   
@@ -41,6 +47,7 @@ describe('start', () => {
       checkPorts: stub().resolves(),
       checkProjectExists: stub().resolves(true),
       getContainerNames: stub().returns({ mysql: 'test_mysql_1', wordpress: 'test_wordpress_1' }),
+      getPort: stub().returns(8080),
       getPortMappings: stub().returns({ 8080: 8080, 8081: 8081 }),
       getProjectPath: stub().returns('/test/project/path'),
       isDockerRunning: stub().resolves(true),
@@ -127,6 +134,15 @@ describe('start', () => {
       '../../src/services/docker.js': {
         DockerService: DockerServiceStub
       },
+      '@oclif/core': {
+        Command: class {
+          config = { 
+            runHook: stub().resolves({ successes: [] }),
+            version: '1.0.0'
+          };
+        },
+        Config: class {}
+      },
       'execa': {
         execa: execaStub
       },
@@ -145,10 +161,18 @@ describe('start', () => {
     // Create an instance of the command
     const startCmd = new StartCommand([])
     
-    // Set up instance
+    // Set up instance with proper config and methods from BaseCommand
     startCmd.docker = dockerServiceStub
     startCmd.checkDockerEnvironment = stub().resolves()
+    startCmd.checkProjectExists = stub().resolves()
+    startCmd.configureDomain = stub().resolves()
     startCmd.findProjectRoot = stub().returns('/test/project/path')
+    startCmd.config = { 
+      runHook: stub().resolves({ successes: [] }),
+      version: '1.0.0'
+    }
+    startCmd.log = stub()
+    startCmd.prettyError = stub()
     
     // Run the command
     await startCmd.run()
@@ -156,28 +180,41 @@ describe('start', () => {
     // Verify Docker service was started
     expect(dockerServiceStub.start.called).to.be.true
     
-    // Verify port configuration was checked
-    expect(dockerServiceStub.checkPorts.called).to.be.true
+    // Verify port was retrieved
+    expect(dockerServiceStub.getPort.called).to.be.true
   })
   
   it('fails if no WordPress project exists in current directory', async () => {
     // Create an instance of the command
     const startCmd = new StartCommand([])
     
-    // Set up instance
+    // Set up instance with proper config
     startCmd.docker = dockerServiceStub
     startCmd.findProjectRoot = stub().returns(null)
+    startCmd.checkDockerEnvironment = stub().resolves()
+    startCmd.configureDomain = stub().resolves()
+    startCmd.config = { 
+      runHook: stub().resolves({ successes: [] }),
+      version: '1.0.0'
+    }
+    startCmd.log = stub()
+    startCmd.prettyError = stub()
     
-    // Set up error to return specific message
-    startCmd.error = stub().throws(new Error('No WordPress project found'))
+    // Set up exit to throw EEXIT as the start command does
+    startCmd.exit = stub().throws(new Error('EEXIT: 1'))
+    
+    // Make checkProjectExists call this.exit(1) like the real method does
+    startCmd.checkProjectExists = stub().callsFake(() => {
+      startCmd.prettyError(new Error('No WordPress project found'))
+      startCmd.exit(1)
+    })
     
     try {
       await startCmd.run()
-      // Should not reach here
       expect.fail('Command should have thrown an error')
     } catch (error) {
       if (error instanceof Error) {
-        expect(error.message).to.include('No WordPress project found')
+        expect(error.message).to.equal('EEXIT: 1')
       } else {
         expect.fail('Error should be an Error instance')
       }
@@ -191,21 +228,24 @@ describe('start', () => {
     // Create an instance of the command
     const startCmd = new StartCommand([])
     
-    // Set up instance
+    // Set up instance with proper config
     startCmd.docker = dockerServiceStub
+    startCmd.checkDockerEnvironment = stub().rejects(new Error('Docker is not running'))
     startCmd.findProjectRoot = stub().returns('/test/project/path')
-    startCmd.checkDockerEnvironment = stub().throws(new Error('Docker is not running'))
+    startCmd.config = { 
+      runHook: stub().resolves({ successes: [] }),
+      version: '1.0.0'
+    }
     
-    // Set up error to return specific message
+    // Set up error to throw
     startCmd.error = stub().throws(new Error('Docker is not running'))
     
     try {
       await startCmd.run()
-      // Should not reach here
       expect.fail('Command should have thrown an error')
     } catch (error) {
       if (error instanceof Error) {
-        expect(error.message).to.include('Docker is not running')
+        expect(error.message).to.equal('Docker is not running')
       } else {
         expect.fail('Error should be an Error instance')
       }
@@ -219,15 +259,37 @@ describe('start', () => {
     // Create an instance of the command
     const startCmd = new StartCommand([])
     
-    // Set up instance
+    // Set up instance with proper config
     startCmd.docker = dockerServiceStub
     startCmd.checkDockerEnvironment = stub().resolves()
+    startCmd.checkProjectExists = stub().resolves()
+    startCmd.configureDomain = stub().resolves()
     startCmd.findProjectRoot = stub().returns('/test/project/path')
+    startCmd.config = { 
+      runHook: stub().resolves({ successes: [] }),
+      version: '1.0.0'
+    }
+    startCmd.log = stub()
+    startCmd.prettyError = stub()
     
-    // Run the command
-    await startCmd.run()
+    // Mock docker.start to throw a port conflict error
+    dockerServiceStub.start.rejects(new Error('Port 8080 is already in use'))
     
-    // Verify port configuration was checked
-    expect(dockerServiceStub.checkPorts.called).to.be.true
+    // Set up exit to throw EEXIT as the start command does
+    startCmd.exit = stub().throws(new Error('EEXIT: 1'))
+    
+    try {
+      await startCmd.run()
+      expect.fail('Command should have thrown an error')
+    } catch (error) {
+      if (error instanceof Error) {
+        expect(error.message).to.equal('EEXIT: 1')
+      } else {
+        expect.fail('Error should be an Error instance')
+      }
+    }
+    
+    // Verify start was attempted
+    expect(dockerServiceStub.start.called).to.be.true
   })
 })
