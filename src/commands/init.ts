@@ -19,7 +19,7 @@ type Spinner = ReturnType<typeof ora>;
 
 export default class Init extends BaseCommand {
   static args = {
-    name: Args.string({ description: 'Project name', required: true }),
+    name: Args.string({ description: 'Project name', required: false }),
   };
   static default = Init;
   static description = 'Initialize a new WordPress development environment';
@@ -125,9 +125,73 @@ export default class Init extends BaseCommand {
    * Main run method for the command
    */
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(Init);
-    const spinner = ora('Initializing WordPress development environment').start();
+    let { args, flags } = await this.parse(Init);
 
+    // Skip interactive mode if all required flags are present
+    if (this.hasAllRequiredFlags(flags)) {
+      this.logDebug('Skipping interactive mode - all flags provided');
+    } else {
+      // Interactive mode for missing flags
+      const prompt = createPromptModule();
+      const interactiveAnswers: { domain?: string; name?: string; ssl?: boolean } = {};
+
+      // 1. Site name
+      if (!args.name) {
+        const { siteName } = await prompt({
+          message: 'Enter a site name (this will be used to create the project directory):',
+          name: 'siteName',
+          type: 'input',
+          validate: (input: string) => input.trim() ? true : 'Site name is required'
+        });
+        interactiveAnswers.name = siteName.trim();
+      }
+
+      // 2. Custom local domain
+      let useCustomDomain = false;
+      if (flags.domain) {
+        useCustomDomain = true;
+      } else {
+        const { useCustomDomain: useCustomDomainAnswer } = await prompt({
+          default: false,
+          message: 'Do you want to use a custom local domain?',
+          name: 'useCustomDomain',
+          type: 'confirm'
+        });
+        useCustomDomain = useCustomDomainAnswer;
+        if (useCustomDomain) {
+          const { domainName } = await prompt({
+            message: 'Enter a name for your custom domain (will be appended with .test):',
+            name: 'domainName',
+            type: 'input',
+            validate: (input: string) => input.trim() ? true : 'Domain name is required'
+          });
+          interactiveAnswers.domain = `${domainName.trim()}.test`;
+        }
+      }
+
+      // Show SSL prompt if using a custom domain and SSL flag wasn't explicitly provided
+      const sslFlagExplicitlyProvided = process.argv.includes('--ssl') || process.argv.includes('--no-ssl');
+      if (useCustomDomain && !sslFlagExplicitlyProvided) {
+        const { useSSL } = await prompt({
+          default: false,
+          message: 'Do you want to install a local SSL certificate for this domain?',
+          name: 'useSSL',
+          type: 'confirm'
+        });
+        interactiveAnswers.ssl = useSSL;
+      }
+
+      // Merge interactive answers into args/flags
+      args = { ...args, ...interactiveAnswers };
+      flags = { ...flags, ...interactiveAnswers };
+    }
+
+    // Ensure nginxProxy is initialized if domain is present
+    if (flags.domain && !this.nginxProxy) {
+      this.nginxProxy = new (await import('../services/nginx-proxy.js')).NginxProxyService();
+    }
+
+    const spinner = ora('Initializing WordPress development environment').start();
     try {
       // Check system architecture
       const architecture = arch();
@@ -138,9 +202,10 @@ export default class Init extends BaseCommand {
       }
 
       // Create project directory
-      const projectPath = join(process.cwd(), args.name);
+      const projectName = args.name!;
+      const projectPath = join(process.cwd(), projectName);
       if (fs.existsSync(projectPath)) {
-        throw new Error(`Directory ${args.name} already exists`);
+        throw new Error(`Directory ${projectName} already exists`);
       }
 
       fs.mkdirSync(projectPath, { recursive: true });
@@ -161,7 +226,7 @@ export default class Init extends BaseCommand {
 
       // Install WordPress
       spinner.text = 'Installing WordPress...';
-      await this.installWordPress(flags['site-name'] || args.name, flags['wordpress-version']);
+      await this.installWordPress(flags['site-name'] || projectName, flags['wordpress-version'], flags);
 
       // Configure custom domain if specified
       if (flags.domain) {
@@ -177,7 +242,7 @@ export default class Init extends BaseCommand {
       }
 
       // Add site to config
-      addSite(args.name, projectPath);
+      addSite(projectName, projectPath);
 
       spinner.succeed('WordPress development environment initialized successfully!');
 
@@ -723,12 +788,20 @@ FLUSH PRIVILEGES;
     return currentDir;
   }
 
-  private async installWordPress(siteName: string, _version: string): Promise<void> {
+  private hasAllRequiredFlags(flags: Record<string, unknown>): boolean {
+    // Only require site-name, domain, and ssl to skip interactive mode
+    return (
+      flags['site-name'] !== undefined &&
+      flags.domain !== undefined &&
+      flags.ssl !== undefined
+    );
+  }
+
+  private async installWordPress(siteName: string, _version: string, flags: Record<string, unknown>): Promise<void> {
     try {
       // Get the project name from the path
       const projectName = this.projectPath.split('/').pop() || 'wordpress';
       const containerName = `${projectName}-wordpress-1`;
-      const { flags } = await this.parse(Init);
 
       // Install WP-CLI properly for the container architecture
       execSync(
@@ -782,7 +855,9 @@ define( 'WP_DEBUG_DISPLAY', true );
 
 $table_prefix = 'wp_';
 
-define( 'WP_AUTO_UPDATE_CORE', true );
+if ( ! defined( 'WP_AUTO_UPDATE_CORE' ) ) {
+    define( 'WP_AUTO_UPDATE_CORE', true );
+}
 
 if ( ! defined( 'ABSPATH' ) ) {
     define( 'ABSPATH', __DIR__ . '/' );
@@ -851,14 +926,44 @@ upload_max_filesize = 64M`;
 
       // If domain is specified, add it to the allowed domains
       if (flags.domain) {
+        const protocol = flags.ssl ? 'https' : 'http';
+        this.logDebug(`Updating siteurl and home to: ${protocol}://${flags.domain}`);
+        try {
+          execSync(
+            `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update siteurl "${protocol}://${flags.domain}" --allow-root'`,
+            { stdio: 'inherit' }
+          );
+          execSync(
+            `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update home "${protocol}://${flags.domain}" --allow-root'`,
+            { stdio: 'inherit' }
+          );
+          this.logDebug('Site URL and home updated successfully');
+        } catch (error) {
+          this.logDebug(`Failed to update siteurl/home: ${error instanceof Error ? error.message : String(error)}`);
+        }
+
+        // Add proxy configuration to wp-config.php
+        const wpConfigContent = `
+// Added by wp-spin for proxy support
+if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+    $_SERVER['HTTPS'] = 'on';
+}
+
+// Force WordPress to use the correct URL
+define('WP_HOME', '${protocol}://${flags.domain}');
+define('WP_SITEURL', '${protocol}://${flags.domain}');
+`;
+        const tempConfigPath = join(tmpdir(), 'wp-config-proxy.php');
+        fs.writeFileSync(tempConfigPath, wpConfigContent);
         execSync(
-          `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update siteurl "http://${flags.domain}" --allow-root'`,
+          `docker cp ${tempConfigPath} ${containerName}:/var/www/html/wp-config-proxy.php`,
           { stdio: 'inherit' }
         );
         execSync(
-          `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update home "http://${flags.domain}" --allow-root'`,
+          `docker exec ${containerName} sh -c 'cat /var/www/html/wp-config-proxy.php >> /var/www/html/wp-config.php'`,
           { stdio: 'inherit' }
         );
+        fs.unlinkSync(tempConfigPath);
       }
 
       // Install and activate a default theme
