@@ -85,6 +85,33 @@ wp-spin start
 
 Your WordPress site will be available at `http://localhost:8080` and PHPMyAdmin at `http://localhost:8081`.
 
+## Interactive Mode, Local URLs, and HTTPS
+
+### Interactive Mode
+When you run `wp-spin init` without all required flags, the CLI will guide you through an interactive setup. You'll be prompted for:
+- Project/site name
+- Whether to use a custom local domain (e.g., mysite.test)
+- Whether to enable HTTPS (SSL) for your local domain (requires [mkcert](https://github.com/FiloSottile/mkcert))
+
+You can skip interactive mode by providing all required flags (e.g., `--site-name`, `--domain`, `--ssl`).
+
+### Local URLs
+By default, your WordPress site will be available at a local URL such as:
+- `http://localhost:8080` (or another port if 8080 is in use)
+- If you specify a custom domain (e.g., `--domain=mysite.test`), it will also be available at `http://mysite.test`
+
+The tool automatically configures your `/etc/hosts` and nginx proxy so the custom domain points to your local environment.
+
+### HTTPS Support
+If you enable the `--ssl` flag (or choose HTTPS in interactive mode), wp-spin will:
+- Generate a local SSL certificate for your custom domain using mkcert
+- Configure nginx to serve your site at `https://yourdomain.test`
+- Update WordPress settings to use HTTPS for the custom domain
+
+**Note:**
+- HTTPS is only available for custom domains (not for plain `localhost`)
+- You must have [mkcert](https://github.com/FiloSottile/mkcert) installed for SSL support
+
 ## Working with Multiple Sites
 
 Each WordPress site is isolated with its own:
