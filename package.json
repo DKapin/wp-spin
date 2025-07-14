@@ -9,7 +9,7 @@
   },
   "bugs": "https://github.com/DKapin/wp-spin/issues",
   "dependencies": {
-    "@oclif/core": "^4",
+    "@oclif/core": "^4.4.0",
     "@oclif/plugin-help": "^6",
     "@oclif/plugin-plugins": "^5.4.37",
     "@types/fs-extra": "^11.0.4",
