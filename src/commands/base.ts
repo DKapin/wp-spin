@@ -326,7 +326,9 @@ export abstract class BaseCommand extends Command {
       // If not a site name, check if path is absolute or relative
       if (path.isAbsolute(sitePath)) {
         const validatedPath = this.validatePath(sitePath);
-        if (!this.isWpSpinProject(validatedPath)) {
+        
+        // Only check if it's a valid project if the directory exists
+        if (fs.existsSync(validatedPath) && !this.isWpSpinProject(validatedPath)) {
           this.prettyError(new Error(`${validatedPath} is not a valid wp-spin project.`));
           this.exit(1);
         }
@@ -337,7 +339,9 @@ export abstract class BaseCommand extends Command {
       // Relative path
       const absolutePath = path.resolve(process.cwd(), sitePath);
       const validatedPath = this.validatePath(absolutePath);
-      if (!this.isWpSpinProject(validatedPath)) {
+      
+      // Only check if it's a valid project if the directory exists
+      if (fs.existsSync(validatedPath) && !this.isWpSpinProject(validatedPath)) {
         this.prettyError(new Error(`${validatedPath} is not a valid wp-spin project.`));
         this.exit(1);
       }
@@ -378,6 +382,17 @@ export abstract class BaseCommand extends Command {
 
     const resolvedPath = path.resolve(inputPath);
     console.log(`DEBUG: Resolved path: ${resolvedPath}`);
+    
+    // For new projects, the directory might not exist yet
+    if (!fs.existsSync(resolvedPath)) {
+      // Check parent directory permissions instead
+      const parentDir = path.dirname(resolvedPath);
+      
+      if (!this.hasSafePermissions(parentDir)) {
+        throw new Error(`Unsafe file permissions detected for parent directory: ${parentDir}`);
+      }
+      return resolvedPath;
+    }
     
     if (!this.hasSafePermissions(resolvedPath)) {
       throw new Error(`Unsafe file permissions detected for path: ${resolvedPath}`);

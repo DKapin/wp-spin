@@ -142,6 +142,7 @@ wp-spin includes several security enhancements:
 * [`wp-spin logs`](#wp-spin-logs)
 * [`wp-spin plugin`](#wp-spin-plugin)
 * [`wp-spin ps`](#wp-spin-ps)
+* [`wp-spin remove`](#wp-spin-remove)
 * [`wp-spin restart`](#wp-spin-restart)
 * [`wp-spin share`](#wp-spin-share)
 * [`wp-spin shell`](#wp-spin-shell)
@@ -266,6 +267,27 @@ EXAMPLES
 ```
 
 _See code: [src/commands/ps.ts](https://github.com/DKapin/wp-spin/blob/v0.7.3/src/commands/ps.ts)_
+
+## `wp-spin remove`
+
+Remove a WordPress development environment
+
+```
+USAGE
+  $ wp-spin remove [-d <value>] [-s <value>]
+
+FLAGS
+  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
+  -s, --site=<value>    Site path or site name
+
+DESCRIPTION
+  Remove a WordPress development environment
+
+EXAMPLES
+  $ wp-spin remove mysite
+```
+
+_See code: [src/commands/remove.ts](https://github.com/DKapin/wp-spin/blob/v0.7.3/src/commands/remove.ts)_
 
 ## `wp-spin restart`
 
