@@ -306,10 +306,13 @@ export default class Init extends BaseCommand {
     let wordpressPort = 8080;
     if (flags?.domain) {
       wordpressPort = await portManager.allocatePort(flags.domain as string, projectPath);
+    } else {
+      // Find available WordPress port
+      wordpressPort = await portManager.findAvailablePort(8080);
     }
 
     // Find available PhpMyAdmin port
-    const phpMyAdminPort = wordpressPort + 2;
+    const phpMyAdminPort = await portManager.findAvailablePort(wordpressPort + 1);
 
     // Store the WordPress port in flags for later use
     if (flags) {
@@ -1219,9 +1222,6 @@ desktop.ini
   private async setupDockerEnvironment(projectPath: string, wordpressPath: string): Promise<void> {
     const spinner = ora();
     const { flags } = await this.parse(Init);
-    
-    // Use DockerService's checkPorts method to handle port conflicts
-    await this.docker.checkPorts();
 
     // Create Dockerfile and entrypoint script
     spinner.start('Creating Docker configuration...');
