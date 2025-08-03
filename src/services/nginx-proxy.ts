@@ -31,16 +31,37 @@ http {
     include /etc/nginx/conf.d/*.conf;
 }
 `;
+  private readonly portMapFile: string;
 
   constructor() {
     this.certsDir = join(os.homedir(), '.wp-spin', 'nginx-proxy', 'certs');
     this.configDir = join(os.homedir(), '.wp-spin', 'nginx-proxy');
+    this.portMapFile = join(this.configDir, 'port-map.json');
     this.ensureCertsDir();
     this.ensureConfigDir();
+    this.ensurePortMapFile();
   }
 
-  public async addDomain(domain: string, port: number, ssl?: boolean): Promise<void> {
+  public async addDomain(domain: string, port?: number, ssl?: boolean): Promise<void> {
     try {
+      const portMap = this.getPortMap();
+      
+      // If no port specified, find an available one
+      const existingPort = portMap[domain];
+      if (!port) {
+        port = existingPort && !(await this.isPortInUse(existingPort)) ? existingPort : await this.findAvailablePort(8080);
+      }
+      
+      // Only check for port conflicts if we're not using a provided port
+      if (!port && await this.isPortInUse(port)) {
+        // If specified port is in use, find a new one
+        port = await this.findAvailablePort(port + 1);
+      }
+
+      // Store the port mapping
+      portMap[domain] = port;
+      this.savePortMap(portMap);
+
       this.addHostsEntry(domain);
       this.updateNginxConfig(domain, port, ssl);
       await this.ensureContainerRunning();
@@ -62,6 +83,11 @@ http {
     return { cert: `/etc/nginx/certs/${domain}.pem`, key: `/etc/nginx/certs/${domain}-key.pem` };
   }
 
+  public getPortForDomain(domain: string): number | undefined {
+    const portMap = this.getPortMap();
+    return portMap[domain];
+  }
+
   public async removeDomain(domain: string): Promise<void> {
     try {
       const configPath = join(this.configDir, 'conf.d', `${domain}.conf`);
@@ -69,11 +95,47 @@ http {
         fs.unlinkSync(configPath);
       }
 
+      // Remove port mapping
+      const portMap = this.getPortMap();
+      delete portMap[domain];
+      this.savePortMap(portMap);
+
       await this.ensureContainerRunning();
       this.removeHostsEntry(domain);
       await this.reloadNginx();
     } catch (error) {
       throw new Error(`Failed to remove domain ${domain}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  public async updateSitePort(domain: string, newPort: number): Promise<void> {
+    try {
+      const configPath = join(this.configDir, 'conf.d', `${domain}.conf`);
+      if (!fs.existsSync(configPath)) {
+        throw new Error(`No nginx config found for domain ${domain}`);
+      }
+
+      // Read current config
+      let config = fs.readFileSync(configPath, 'utf8');
+      
+      // Update port in proxy_pass directives
+      config = config.replace(
+        /proxy_pass http:\/\/host\.docker\.internal:\d+;/g,
+        `proxy_pass http://host.docker.internal:${newPort};`
+      );
+
+      // Write updated config
+      fs.writeFileSync(configPath, config);
+
+      // Update port map
+      const portMap = this.getPortMap();
+      portMap[domain] = newPort;
+      this.savePortMap(portMap);
+
+      // Reload nginx
+      await this.reloadNginx();
+    } catch (error) {
+      throw new Error(`Failed to update port for domain ${domain}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -123,6 +185,30 @@ http {
 
     if (process.platform !== 'win32') {
       execSync(`sudo chown -R ${username}:${group} ${this.certsDir}`, { stdio: 'inherit' });
+    }
+  }
+
+  private async ensureContainerRunning(): Promise<void> {
+    try {
+      const containerExists = execSync(`docker ps -a --filter "name=${this.containerName}" --format "{{.Names}}"`, { encoding: 'utf8' }).trim() === this.containerName;
+      
+      if (containerExists) {
+        const isRunning = execSync(`docker ps --filter "name=${this.containerName}" --format "{{.Names}}"`, { encoding: 'utf8' }).trim() === this.containerName;
+        if (!isRunning) {
+          execSync(`docker start ${this.containerName}`, { stdio: 'inherit' });
+        }
+      } else {
+        // Start the container with ports 80 and 443 exposed, and mount certs
+        execSync(`docker run -d --name ${this.containerName} \
+          -p 80:80 -p 443:443 \
+          -v ${this.configDir}/nginx.conf:/etc/nginx/nginx.conf:ro \
+          -v ${this.configDir}/conf.d:/etc/nginx/conf.d:ro \
+          -v ${this.certsDir}:/etc/nginx/certs:ro \
+          --add-host=host.docker.internal:host-gateway \
+          nginx:stable`, { stdio: 'inherit' });
+      }
+    } catch (error) {
+      throw new Error(`Failed to ensure NGINX container is running: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -191,27 +277,55 @@ http {
     }
   }
 
-  private async ensureContainerRunning(): Promise<void> {
-    try {
-      const containerExists = execSync(`docker ps -a --filter "name=${this.containerName}" --format "{{.Names}}"`, { encoding: 'utf8' }).trim() === this.containerName;
-      
-      if (containerExists) {
-        const isRunning = execSync(`docker ps --filter "name=${this.containerName}" --format "{{.Names}}"`, { encoding: 'utf8' }).trim() === this.containerName;
-        if (!isRunning) {
-          execSync(`docker start ${this.containerName}`, { stdio: 'inherit' });
+  private ensurePortMapFile(): void {
+    if (!fs.existsSync(this.portMapFile)) {
+      fs.writeFileSync(this.portMapFile, JSON.stringify({}, null, 2));
+    }
+  }
+
+  private async findAvailablePort(startPort: number = 9000): Promise<number> {
+    // Get ports from port map
+    const usedPorts = new Set(Object.values(this.getPortMap()));
+    
+    // Also check all existing nginx configs for ports
+    const confDir = join(this.configDir, 'conf.d');
+    if (fs.existsSync(confDir)) {
+      const configFiles = fs.readdirSync(confDir);
+      for (const file of configFiles) {
+        if (file.endsWith('.conf')) {
+          const content = fs.readFileSync(join(confDir, file), 'utf8');
+          const portMatch = content.match(/proxy_pass http:\/\/host\.docker\.internal:(\d+)/);
+          if (portMatch) {
+            usedPorts.add(parseInt(portMatch[1], 10));
+          }
         }
-      } else {
-        // Start the container with ports 80 and 443 exposed, and mount certs
-        execSync(`docker run -d --name ${this.containerName} \
-          -p 80:80 -p 443:443 \
-          -v ${this.configDir}/nginx.conf:/etc/nginx/nginx.conf:ro \
-          -v ${this.configDir}/conf.d:/etc/nginx/conf.d:ro \
-          -v ${this.certsDir}:/etc/nginx/certs:ro \
-          --add-host=host.docker.internal:host-gateway \
-          nginx:stable`, { stdio: 'inherit' });
       }
-    } catch (error) {
-      throw new Error(`Failed to ensure NGINX container is running: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    const portsToCheck = Array.from({ length: 1000 }, (_, i) => startPort + i)
+      .filter(port => !usedPorts.has(port));
+
+    // Check ports in parallel
+    const portChecks = await Promise.all(
+      portsToCheck.map(async port => ({
+        inUse: await this.isPortInUse(port),
+        port
+      }))
+    );
+
+    const availablePort = portChecks.find(check => !check.inUse)?.port;
+    if (!availablePort) {
+      throw new Error('No available ports found in range 9000-9999. Please free up some ports or specify a custom port.');
+    }
+
+    return availablePort;
+  }
+
+  private getPortMap(): Record<string, number> {
+    try {
+      return JSON.parse(fs.readFileSync(this.portMapFile, 'utf8'));
+    } catch {
+      return {};
     }
   }
 
@@ -225,6 +339,10 @@ http {
       });
       server.listen(port);
     });
+  }
+
+  private savePortMap(portMap: Record<string, number>): void {
+    fs.writeFileSync(this.portMapFile, JSON.stringify(portMap, null, 2));
   }
 
   private async reloadNginx(): Promise<void> {

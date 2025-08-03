@@ -12,6 +12,7 @@ import ora from 'ora';
 
 import { addSite } from '../config/sites.js';
 import { DockerService } from '../services/docker.js';
+import { PortManagerService } from '../services/port-manager.js';
 import { BaseCommand, baseFlags } from './base.js';
 
 // Define specific types to replace 'any'
@@ -34,10 +35,13 @@ export default class Init extends BaseCommand {
     domain: Flags.string({
       description: 'Custom domain to use for the WordPress site (e.g., mysite.test)',
     }),
-    port: Flags.integer({
-      char: 'p',
-      default: 8080,
-      description: 'Port to run WordPress on',
+    multisite: Flags.boolean({
+      default: false,
+      description: 'Enable WordPress Multisite (Network) support',
+    }),
+    'multisite-type': Flags.string({
+      description: 'Type of multisite network: subdomain or path (required if --multisite is used)',
+      options: ['subdomain', 'path'],
     }),
     'site-name': Flags.string({
       description: 'Site name (defaults to project name)',
@@ -125,135 +129,21 @@ export default class Init extends BaseCommand {
    * Main run method for the command
    */
   async run(): Promise<void> {
-    let { args, flags } = await this.parse(Init);
+    let { args, flags } = await this.parse(Init) as { args: Record<string, unknown>, flags: Record<string, unknown> };
 
-    // Skip interactive mode if all required flags are present
-    if (this.hasAllRequiredFlags(flags)) {
-      this.logDebug('Skipping interactive mode - all flags provided');
-    } else {
-      // Interactive mode for missing flags
-      const prompt = createPromptModule();
-      const interactiveAnswers: { domain?: string; name?: string; ssl?: boolean } = {};
+    await this.validateMultisiteFlags(flags);
 
-      // 1. Site name
-      if (!args.name) {
-        const { siteName } = await prompt({
-          message: 'Enter a site name (this will be used to create the project directory):',
-          name: 'siteName',
-          type: 'input',
-          validate: (input: string) => input.trim() ? true : 'Site name is required'
-        });
-        interactiveAnswers.name = siteName.trim();
-      }
-
-      // 2. Custom local domain
-      let useCustomDomain = false;
-      if (flags.domain) {
-        useCustomDomain = true;
-      } else {
-        const { useCustomDomain: useCustomDomainAnswer } = await prompt({
-          default: false,
-          message: 'Do you want to use a custom local domain?',
-          name: 'useCustomDomain',
-          type: 'confirm'
-        });
-        useCustomDomain = useCustomDomainAnswer;
-        if (useCustomDomain) {
-          const { domainName } = await prompt({
-            message: 'Enter a name for your custom domain (will be appended with .test):',
-            name: 'domainName',
-            type: 'input',
-            validate: (input: string) => input.trim() ? true : 'Domain name is required'
-          });
-          interactiveAnswers.domain = `${domainName.trim()}.test`;
-        }
-      }
-
-      // Show SSL prompt if using a custom domain and SSL flag wasn't explicitly provided
-      const sslFlagExplicitlyProvided = process.argv.includes('--ssl') || process.argv.includes('--no-ssl');
-      if (useCustomDomain && !sslFlagExplicitlyProvided) {
-        const { useSSL } = await prompt({
-          default: false,
-          message: 'Do you want to install a local SSL certificate for this domain?',
-          name: 'useSSL',
-          type: 'confirm'
-        });
-        interactiveAnswers.ssl = useSSL;
-      }
-
-      // Merge interactive answers into args/flags
-      args = { ...args, ...interactiveAnswers };
-      flags = { ...flags, ...interactiveAnswers };
+    if (!this.hasAllRequiredFlags(flags)) {
+      ({ args, flags } = await this.handleInteractiveMode(args, flags));
     }
 
-    // Ensure nginxProxy is initialized if domain is present
-    if (flags.domain && !this.nginxProxy) {
-      this.nginxProxy = new (await import('../services/nginx-proxy.js')).NginxProxyService();
+    // Ensure args.name is present
+    if (!args.name || typeof args.name !== 'string' || !args.name.trim()) {
+      this.error('Project name is required.');
+      return;
     }
 
-    const spinner = ora('Initializing WordPress development environment').start();
-    try {
-      // Check system architecture
-      const architecture = arch();
-      spinner.info(`Detected architecture: ${architecture}`);
-      
-      if (architecture === 'arm64') {
-        spinner.info('ARM64 architecture detected - using ARM-compatible images');
-      }
-
-      // Create project directory
-      const projectName = args.name!;
-      const projectPath = join(process.cwd(), projectName);
-      if (fs.existsSync(projectPath)) {
-        throw new Error(`Directory ${projectName} already exists`);
-      }
-
-      fs.mkdirSync(projectPath, { recursive: true });
-      this.projectPath = projectPath; // Set the project path here
-
-      // Create docker-compose.yml with architecture-specific images
-      this.createDockerComposeFile(projectPath, flags.port);
-
-      // Initialize Docker service
-      this.docker = new DockerService(projectPath, this);
-
-      // Start containers
-      await this.docker.start();
-
-      // Wait for WordPress to be ready
-      spinner.text = 'Waiting for WordPress to be ready...';
-      await this.waitForWordPress();
-
-      // Install WordPress
-      spinner.text = 'Installing WordPress...';
-      await this.installWordPress(flags['site-name'] || projectName, flags['wordpress-version'], flags);
-
-      // Configure custom domain if specified
-      if (flags.domain) {
-        spinner.text = 'Configuring custom domain...';
-        let ssl = false;
-        if (flags.ssl) {
-          spinner.text = 'Generating local SSL certificate with mkcert...';
-          await this.nginxProxy.generateSSLCert(flags.domain);
-          ssl = true;
-        }
-        
-        await this.configureDomainWithSSL(flags.domain, flags.port, ssl);
-      }
-
-      // Add site to config
-      addSite(projectName, projectPath);
-
-      spinner.succeed('WordPress development environment initialized successfully!');
-
-      // Display project info
-      await this.displayProjectInfo(projectPath, flags.port);
-
-    } catch (error) {
-      spinner.fail('Failed to initialize project');
-      this.prettyError(error instanceof Error ? error : new Error(String(error)));
-      this.exit(1);
-    }
+    await this.setupProject(args as Record<string, unknown> & { name: string }, flags);
   }
   
   /**
@@ -404,15 +294,37 @@ export default class Init extends BaseCommand {
   /**
    * Creates a docker-compose.yml file for the WordPress project
    */
-  private async createDockerComposeFile(projectPath: string, port: number): Promise<void> {
+  private async createDockerComposeFile(projectPath: string, flags?: Record<string, unknown>): Promise<void> {
     const dockerComposePath = join(projectPath, 'docker-compose.yml');
     const architecture = arch();
     const isArm = architecture === 'arm64';
     
-    // Find available ports
-    const availableWordPressPort = await this.findAvailablePort(port);
-    const availablePhpMyAdminPort = await this.findAvailablePort(availableWordPressPort + 2);
+    // Initialize port manager
+    const portManager = new PortManagerService();
     
+    // Get port from port manager if domain is specified
+    let wordpressPort = 8080;
+    if (flags?.domain) {
+      wordpressPort = await portManager.allocatePort(flags.domain as string, projectPath);
+    }
+
+    // Find available PhpMyAdmin port
+    const phpMyAdminPort = wordpressPort + 2;
+
+    // Store the WordPress port in flags for later use
+    if (flags) {
+      flags.port = wordpressPort;
+    }
+
+    // Prepare WORDPRESS_CONFIG_EXTRA if multisite is enabled
+    let configExtra = '';
+    if (flags && flags.multisite) {
+      configExtra = `define('WP_ALLOW_MULTISITE', true);`;
+      if (flags['multisite-type'] === 'subdomain') {
+        configExtra += `\ndefine('SUBDOMAIN_INSTALL', true);`;
+      }
+    }
+
     const dockerCompose = `
 version: '3'
 
@@ -421,12 +333,12 @@ services:
     image: ${isArm ? 'arm64v8/wordpress:latest' : 'wordpress:latest'}
     platform: ${isArm ? 'linux/arm64/v8' : 'linux/amd64'}
     ports:
-      - "${availableWordPressPort}:80"
+      - "${wordpressPort}:80"
     environment:
       WORDPRESS_DB_HOST: mysql
       WORDPRESS_DB_USER: wordpress
       WORDPRESS_DB_PASSWORD: wordpress
-      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_NAME: wordpress${configExtra ? `\n      WORDPRESS_CONFIG_EXTRA: |\n        ${configExtra.replaceAll('\n', '\n        ')}` : ''}
     volumes:
       - ./wp-content:/var/www/html/wp-content
     depends_on:
@@ -447,7 +359,7 @@ services:
     image: phpmyadmin/phpmyadmin
     platform: ${isArm ? 'linux/amd64' : 'linux/amd64'}
     ports:
-      - "${availablePhpMyAdminPort}:80"
+      - "${phpMyAdminPort}:80"
     environment:
       PMA_HOST: mysql
     depends_on:
@@ -607,37 +519,53 @@ FLUSH PRIVILEGES;
   /**
    * Displays information about the WordPress project after initialization
    */
-  private async displayProjectInfo(projectPath: string, port: number): Promise<void> {
-    const { flags } = await this.parse(Init);
+  private async displayProjectInfo(projectPath: string, port: number, flags: Record<string, unknown>): Promise<void> {
     const wordpressPath = join(projectPath, 'wp-content');
     const protocol = flags.ssl ? 'https' : 'http';
 
     this.log(`\nProject initialized at: ${chalk.cyan(projectPath)}`);
     this.log(`WordPress files: ${chalk.cyan(wordpressPath)}`);
     this.log(`\nYou can access your site at:`);
-    this.log(`  ${chalk.cyan(`${protocol}://localhost:${port}`)}`);
     if (flags.domain) {
       this.log(`  ${chalk.cyan(`${protocol}://${flags.domain}`)}`);
     }
+
+    this.log(`  ${chalk.cyan(`${protocol}://localhost:${port}`)}`);
     
     this.log(`\nWordPress admin:`);
-    this.log(`  ${chalk.cyan(`${protocol}://localhost:${port}/wp-admin`)}`);
     if (flags.domain) {
       this.log(`  ${chalk.cyan(`${protocol}://${flags.domain}/wp-admin`)}`);
     }
+    
+    this.log(`  ${chalk.cyan(`${protocol}://localhost:${port}/wp-admin`)}`);
 
     this.log(`\nDefault credentials:`);
     this.log(`  Username: ${chalk.cyan('admin')}`);
     this.log(`  Password: ${chalk.cyan('password')}`);
   }
 
-  private async findAvailablePort(startPort: number): Promise<number> {
-    const isAvailable = await this.isPortAvailable(startPort);
-    if (isAvailable) {
-      return startPort;
-    }
+  private async findAvailablePort(startPort: number, usedPorts: Set<number>): Promise<number> {
+    const batchSize = 10;
     
-    return this.findAvailablePort(startPort + 1);
+    const checkBatch = async (port: number): Promise<number> => {
+      const portChecks = await Promise.all(
+        Array.from({ length: batchSize }, (_, i) => port + i)
+          .filter(p => !usedPorts.has(p))
+          .map(async p => ({
+            available: await this.isPortAvailable(p),
+            port: p
+          }))
+      );
+      
+      const availablePort = portChecks.find(check => check.available)?.port;
+      if (availablePort) {
+        return availablePort;
+      }
+      
+      return checkBatch(port + batchSize);
+    };
+    
+    return checkBatch(startPort);
   }
   
   /**
@@ -753,6 +681,94 @@ FLUSH PRIVILEGES;
   private generateSecurePassword(length: number = 32): string {
     return crypto.randomBytes(length).toString('hex');
   }
+
+  private async handleInteractiveMode(args: Record<string, unknown>, flags: Record<string, unknown>): Promise<{ args: Record<string, unknown>, flags: Record<string, unknown> }> {
+    const prompt = createPromptModule();
+    const interactiveAnswers: { domain?: string; multisite?: boolean; 'multisite-type'?: string; name?: string; ssl?: boolean } = {};
+
+    // 1. Site name
+    if (!args.name) {
+      const { siteName } = await prompt({
+        message: 'Enter a site name (this will be used to create the project directory):',
+        name: 'siteName',
+        type: 'input',
+        validate: (input: string) => input.trim() ? true : 'Site name is required'
+      });
+      interactiveAnswers.name = siteName.trim();
+    }
+
+    // 2. Multisite prompt
+    if (flags.multisite === undefined) {
+      const { enableMultisite } = await prompt({
+        default: false,
+        message: 'Enable WordPress Multisite (Network) support?',
+        name: 'enableMultisite',
+        type: 'confirm',
+      });
+      interactiveAnswers.multisite = enableMultisite;
+    }
+
+    // 3. Multisite type prompt if multisite is enabled
+    if ((flags.multisite || interactiveAnswers.multisite) && !flags['multisite-type']) {
+      const { multisiteType } = await prompt({
+        choices: [
+          { name: 'Subdomain (e.g., site1.mysite.test)', value: 'subdomain' },
+          { name: 'Path (e.g., mysite.test/site1)', value: 'path' },
+        ],
+        message: 'Select multisite type:',
+        name: 'multisiteType',
+        type: 'list',
+      });
+      interactiveAnswers['multisite-type'] = multisiteType;
+    }
+
+    // 4. Custom local domain
+    let useCustomDomain = false;
+    if (flags.domain) {
+      useCustomDomain = true;
+    } else {
+      const { useCustomDomain: useCustomDomainAnswer } = await prompt({
+        default: false,
+        message: 'Do you want to use a custom local domain?',
+        name: 'useCustomDomain',
+        type: 'confirm'
+      });
+      useCustomDomain = useCustomDomainAnswer;
+      if (useCustomDomain) {
+        const { domainName } = await prompt({
+          message: 'Enter a name for your custom domain (will be appended with .test):',
+          name: 'domainName',
+          type: 'input',
+          validate: (input: string) => input.trim() ? true : 'Domain name is required'
+        });
+        interactiveAnswers.domain = `${domainName.trim()}.test`;
+      }
+    }
+
+    // 5. If multisite type is subdomain, require custom domain
+    if ((flags.multisite || interactiveAnswers.multisite) && 
+        (flags['multisite-type'] === 'subdomain' || interactiveAnswers['multisite-type'] === 'subdomain') && 
+        !(flags.domain || interactiveAnswers.domain)) {
+      this.error('Subdomain multisite requires a custom local domain (e.g., mysite.test). Please provide --domain. See: https://developer.wordpress.org/advanced-administration/multisite/prepare-network/');
+    }
+
+    // 6. SSL prompt if using a custom domain and SSL flag wasn't explicitly provided
+    const sslFlagExplicitlyProvided = process.argv.includes('--ssl') || process.argv.includes('--no-ssl');
+    if (useCustomDomain && !sslFlagExplicitlyProvided) {
+      const { useSSL } = await prompt({
+        default: false,
+        message: 'Do you want to install a local SSL certificate for this domain?',
+        name: 'useSSL',
+        type: 'confirm'
+      });
+      interactiveAnswers.ssl = useSSL;
+    }
+
+    // Merge interactive answers into args/flags
+    args = { ...args, ...interactiveAnswers };
+    flags = { ...flags, ...interactiveAnswers };
+    return { args, flags };
+  }
   
   /**
    * Handle local WordPress source (from current directory)
@@ -840,8 +856,30 @@ FLUSH PRIVILEGES;
         // Ignore errors - file doesn't exist or couldn't be removed
       }
 
-      // Create wp-config.php with debug settings
-      const configContent = `<?php
+      // Create wp-config.php with debug settings and SSL support
+      const protocol = flags.ssl ? 'https' : 'http';
+      const sslConfig = flags.domain ? `
+// Added by wp-spin for proxy support - MUST be at the top
+if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+    $_SERVER['HTTPS'] = 'on';
+    $_SERVER['SERVER_PORT'] = 443;
+}
+` : '';
+
+      const domainConfig = flags.domain ? `
+// Force WordPress to use the correct URL and protocol
+define('WP_HOME', '${protocol}://${flags.domain}');
+define('WP_SITEURL', '${protocol}://${flags.domain}');
+
+${flags.ssl ? "// Force HTTPS for admin and login pages\ndefine('FORCE_SSL_ADMIN', true);\n" : ""}
+// Ensure WordPress generates correct URLs for assets
+if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+    define('WP_CONTENT_URL', '${protocol}://${flags.domain}/wp-content');
+    define('WP_PLUGIN_URL', '${protocol}://${flags.domain}/wp-content/plugins');
+}
+` : '';
+
+      const configContent = `<?php${sslConfig}
 define( 'DB_NAME', 'wordpress' );
 define( 'DB_USER', 'wordpress' );
 define( 'DB_PASSWORD', 'wordpress' );
@@ -852,12 +890,8 @@ define( 'DB_COLLATE', '' );
 define( 'WP_DEBUG', true );
 define( 'WP_DEBUG_LOG', true );
 define( 'WP_DEBUG_DISPLAY', true );
-
+${domainConfig}
 $table_prefix = 'wp_';
-
-if ( ! defined( 'WP_AUTO_UPDATE_CORE' ) ) {
-    define( 'WP_AUTO_UPDATE_CORE', true );
-}
 
 if ( ! defined( 'ABSPATH' ) ) {
     define( 'ABSPATH', __DIR__ . '/' );
@@ -908,62 +942,31 @@ upload_max_filesize = 64M`;
         { stdio: 'inherit' }
       );
 
-      // Install WordPress using WP-CLI with the correct URL including port
+      // Install WordPress using WP-CLI with the correct URL
+      const installUrl = flags.domain 
+        ? `${flags.ssl ? 'https' : 'http'}://${flags.domain}`
+        : `http://localhost:${flags.port}`;
+      
       execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core install --url=http://localhost:${flags.port} --title="${siteName}" --admin_user=admin --admin_password=password --admin_email=admin@example.com --allow-root'`,
+        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core install --url="${installUrl}" --title="${siteName}" --admin_user=admin --admin_password=password --admin_email=admin@example.com --allow-root'`,
         { stdio: 'inherit' }
       );
 
-      // Update site URL and home URL to include port
-      execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update home "http://localhost:${flags.port}" --allow-root'`,
-        { stdio: 'inherit' }
-      );
-      execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update siteurl "http://localhost:${flags.port}" --allow-root'`,
-        { stdio: 'inherit' }
-      );
-
-      // If domain is specified, add it to the allowed domains
-      if (flags.domain) {
+      // Update site URLs - skip if domain is specified (already set in wp-config.php)
+      if (!flags.domain) {
+        // Only update URLs to localhost if no custom domain is specified
+        execSync(
+          `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update home "http://localhost:${flags.port}" --allow-root'`,
+          { stdio: 'inherit' }
+        );
+        execSync(
+          `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update siteurl "http://localhost:${flags.port}" --allow-root'`,
+          { stdio: 'inherit' }
+        );
+      } else {
+        // URLs are already set via wp-config.php constants, no need to update via WP-CLI
         const protocol = flags.ssl ? 'https' : 'http';
-        this.logDebug(`Updating siteurl and home to: ${protocol}://${flags.domain}`);
-        try {
-          execSync(
-            `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update siteurl "${protocol}://${flags.domain}" --allow-root'`,
-            { stdio: 'inherit' }
-          );
-          execSync(
-            `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update home "${protocol}://${flags.domain}" --allow-root'`,
-            { stdio: 'inherit' }
-          );
-          this.logDebug('Site URL and home updated successfully');
-        } catch (error) {
-          this.logDebug(`Failed to update siteurl/home: ${error instanceof Error ? error.message : String(error)}`);
-        }
-
-        // Add proxy configuration to wp-config.php
-        const wpConfigContent = `
-// Added by wp-spin for proxy support
-if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
-    $_SERVER['HTTPS'] = 'on';
-}
-
-// Force WordPress to use the correct URL
-define('WP_HOME', '${protocol}://${flags.domain}');
-define('WP_SITEURL', '${protocol}://${flags.domain}');
-`;
-        const tempConfigPath = join(tmpdir(), 'wp-config-proxy.php');
-        fs.writeFileSync(tempConfigPath, wpConfigContent);
-        execSync(
-          `docker cp ${tempConfigPath} ${containerName}:/var/www/html/wp-config-proxy.php`,
-          { stdio: 'inherit' }
-        );
-        execSync(
-          `docker exec ${containerName} sh -c 'cat /var/www/html/wp-config-proxy.php >> /var/www/html/wp-config.php'`,
-          { stdio: 'inherit' }
-        );
-        fs.unlinkSync(tempConfigPath);
+        this.logDebug(`URLs already configured in wp-config.php as: ${protocol}://${flags.domain}`);
       }
 
       // Install and activate a default theme
@@ -971,6 +974,68 @@ define('WP_SITEURL', '${protocol}://${flags.domain}');
         `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp theme install twentytwentyfour --activate --allow-root'`,
         { stdio: 'inherit' }
       );
+
+      // Set up multisite if requested
+      if (flags.multisite) {
+        console.log('Setting up WordPress Multisite network...');
+        
+        const networkTitle = `${siteName} Network`;
+        
+        try {
+          // Convert to multisite using WP-CLI
+          const multisiteCommand = flags['multisite-type'] === 'subdomain' 
+            ? `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core multisite-convert --title="${networkTitle}" --subdomains --allow-root'`
+            : `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core multisite-convert --title="${networkTitle}" --allow-root'`;
+          
+          execSync(multisiteCommand, { stdio: 'inherit' });
+          
+          // Add multisite constants to wp-config.php manually since WP-CLI can't modify it when WP_HOME/WP_SITEURL are constants
+          if (flags.domain) {
+            const multisiteConfigContent = `<?php${sslConfig}
+define( 'DB_NAME', 'wordpress' );
+define( 'DB_USER', 'wordpress' );
+define( 'DB_PASSWORD', 'wordpress' );
+define( 'DB_HOST', 'mysql' );
+define( 'DB_CHARSET', 'utf8' );
+define( 'DB_COLLATE', '' );
+
+define( 'WP_DEBUG', true );
+define( 'WP_DEBUG_LOG', true );
+define( 'WP_DEBUG_DISPLAY', true );
+${domainConfig}
+// Multisite configuration
+define( 'WP_ALLOW_MULTISITE', true );
+define( 'MULTISITE', true );
+define( 'SUBDOMAIN_INSTALL', ${flags['multisite-type'] === 'subdomain' ? 'true' : 'false'} );
+define( 'DOMAIN_CURRENT_SITE', '${flags.domain}' );
+define( 'PATH_CURRENT_SITE', '/' );
+define( 'SITE_ID_CURRENT_SITE', 1 );
+define( 'BLOG_ID_CURRENT_SITE', 1 );
+
+$table_prefix = 'wp_';
+
+if ( ! defined( 'ABSPATH' ) ) {
+    define( 'ABSPATH', __DIR__ . '/' );
+}
+
+require_once ABSPATH . 'wp-settings.php';`;
+
+            // Write the complete multisite config
+            const tempMultisiteConfigPath = join(tmpdir(), 'wp-config-multisite.php');
+            fs.writeFileSync(tempMultisiteConfigPath, multisiteConfigContent);
+            execSync(
+              `docker cp ${tempMultisiteConfigPath} ${containerName}:/var/www/html/wp-config.php`,
+              { stdio: 'inherit' }
+            );
+            fs.unlinkSync(tempMultisiteConfigPath);
+          }
+          
+          console.log('WordPress Multisite network setup completed successfully!');
+        } catch (error) {
+          console.warn('Warning: Multisite setup encountered issues. You may need to complete setup manually.');
+          console.warn(`Error: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
 
       // Clear WordPress cache
       execSync(
@@ -987,7 +1052,7 @@ define('WP_SITEURL', '${protocol}://${flags.domain}');
       throw new Error(`Failed to install WordPress: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  
+
   private async isPortAvailable(port: number): Promise<boolean> {
     try {
       // Check if port is in use by Docker containers
@@ -1077,14 +1142,19 @@ define('WP_SITEURL', '${protocol}://${flags.domain}');
 
     // Create project directory
     spinner.start('Creating project directory...');
-    fs.mkdirSync(projectPath);
-    spinner.succeed('Project directory created');
+    fs.mkdirSync(projectPath, { recursive: true });
+    // Set proper permissions (755 for directories)
+    fs.chmodSync(projectPath, 0o755);
+    this.projectPath = projectPath; // Set the project path here
 
     // Create a .wp-spin file as a marker for project root
-    fs.writeFileSync(join(projectPath, '.wp-spin'), JSON.stringify({
+    const { flags } = await this.parse(Init);
+    const config = {
       createdAt: new Date().toISOString(),
+      domain: flags.domain || null,
       version: this.config.version,
-    }, null, 2));
+    };
+    fs.writeFileSync(join(projectPath, '.wp-spin'), JSON.stringify(config, null, 2));
 
     // Create .gitignore file
     const gitignoreContent = `# wp-spin specific files
@@ -1160,7 +1230,7 @@ desktop.ini
 
     // Create docker-compose.yml with the correct ports
     spinner.start('Creating docker-compose.yml...');
-    await this.createDockerComposeFile(projectPath, flags.port);
+    await this.createDockerComposeFile(projectPath, flags);
     spinner.succeed('docker-compose.yml created');
 
     // Create .env file
@@ -1186,7 +1256,85 @@ desktop.ini
       await this.tryRecoverEnvironment(error, wordpressPath, projectPath, spinner);
     }
   }
-  
+
+  private async setupProject(args: Record<string, unknown> & { name: string }, flags: Record<string, unknown>): Promise<void> {
+    // Ensure nginxProxy is initialized if domain is present
+    if (flags.domain && !this.nginxProxy) {
+      this.nginxProxy = new (await import('../services/nginx-proxy.js')).NginxProxyService();
+    }
+
+    const spinner = ora('Initializing WordPress development environment').start();
+    try {
+      // Check system architecture
+      const architecture = arch();
+      spinner.info(`Detected architecture: ${architecture}`);
+      if (architecture === 'arm64') {
+        spinner.info('ARM64 architecture detected - using ARM-compatible images');
+      }
+
+      // Create project directory
+      const projectName = args.name!;
+      const projectPath = join(process.cwd(), projectName);
+      if (fs.existsSync(projectPath)) {
+        throw new Error(`Directory ${projectName} already exists`);
+      }
+      
+      fs.mkdirSync(projectPath, { recursive: true });
+      // Set proper permissions (755 for directories)
+      fs.chmodSync(projectPath, 0o755);
+      this.projectPath = projectPath; // Set the project path here
+
+      // Create docker-compose.yml with architecture-specific images
+      await this.createDockerComposeFile(projectPath, flags);
+
+      // Initialize Docker service
+      this.docker = new DockerService(projectPath, this);
+
+      // Start containers
+      await this.docker.start();
+
+      // Get the actual port from Docker first
+      const port = await this.docker.getPort('wordpress');
+      
+      // Update the port in flags to ensure consistency
+      flags.port = port;
+
+      // Wait for WordPress to be ready
+      spinner.text = 'Waiting for WordPress to be ready...';
+      await this.waitForWordPress();
+
+      // Install WordPress
+      spinner.text = 'Installing WordPress...';
+      await this.installWordPress(flags['site-name'] as string || projectName, flags['wordpress-version'] as string, flags);
+
+      // Configure custom domain if specified
+      if (flags.domain) {
+        spinner.text = 'Configuring custom domain...';
+        let ssl = false;
+        if (flags.ssl) {
+          spinner.text = 'Generating local SSL certificate with mkcert...';
+          await this.nginxProxy.generateSSLCert(flags.domain as string);
+          ssl = true;
+        }
+        
+        // Configure the domain with the actual port from Docker
+        await this.nginxProxy.addDomain(flags.domain as string, port, ssl);
+      }
+
+      // Add site to config
+      addSite(projectName, projectPath);
+
+      spinner.succeed('WordPress development environment initialized successfully!');
+
+      // Display project info with the actual port
+      await this.displayProjectInfo(projectPath, port, flags);
+    } catch (error) {
+      spinner.fail('Failed to initialize project');
+      this.prettyError(error instanceof Error ? error : new Error(String(error)));
+      this.exit(1);
+    }
+  }
+
   /**
    * Set up WordPress source files
    */
@@ -1355,6 +1503,19 @@ desktop.ini
     } catch (error) {
       console.error('Error updating wp-config.php:', error);
       // Continue despite error - we'll use the original config
+    }
+  }
+
+  private async validateMultisiteFlags(flags: Record<string, unknown>): Promise<void> {
+    if (flags.multisite) {
+      if (!flags['multisite-type']) {
+        this.error('You must specify --multisite-type (subdomain or path) when using --multisite. See: https://developer.wordpress.org/advanced-administration/multisite/prepare-network/');
+      }
+
+      // Only validate domain requirement if we're not in interactive mode
+      if (flags['multisite-type'] === 'subdomain' && !flags.domain && this.hasAllRequiredFlags(flags)) {
+        this.error('Subdomain multisite requires a custom local domain (e.g., mysite.test). Please provide --domain. See: https://developer.wordpress.org/advanced-administration/multisite/prepare-network/');
+      }
     }
   }
 
