@@ -28,12 +28,13 @@ export default class Init extends BaseCommand {
     '$ wp-spin init my-site',
     '$ wp-spin init my-site --site-name="My Site"',
     '$ wp-spin init my-site --wordpress-version=6.4',
+    '$ wp-spin init my-site --domain=mysite',
     '$ wp-spin init my-site --domain=mysite.test',
   ];
   static flags = {
     ...baseFlags,
     domain: Flags.string({
-      description: 'Custom domain to use for the WordPress site (e.g., mysite.test)',
+      description: 'Custom domain to use for the WordPress site (e.g., mysite.test). If no TLD is provided, .test will be automatically appended.',
     }),
     multisite: Flags.boolean({
       default: false,
@@ -130,6 +131,11 @@ export default class Init extends BaseCommand {
    */
   async run(): Promise<void> {
     let { args, flags } = await this.parse(Init) as { args: Record<string, unknown>, flags: Record<string, unknown> };
+
+    // Normalize domain if provided
+    if (flags.domain && typeof flags.domain === 'string') {
+      flags.domain = this.normalizeDomain(flags.domain);
+    }
 
     await this.validateMultisiteFlags(flags);
 
@@ -805,6 +811,30 @@ FLUSH PRIVILEGES;
     }
     
     return currentDir;
+  }
+
+  /**
+   * Normalizes a domain by ensuring it ends with .test
+   * @param domain - The domain to normalize
+   * @returns The normalized domain with .test suffix
+   */
+  private normalizeDomain(domain: string): string {
+    if (!domain) return domain;
+    
+    const trimmedDomain = domain.trim();
+    
+    // If the domain already ends with .test, return as-is
+    if (trimmedDomain.endsWith('.test')) {
+      return trimmedDomain;
+    }
+    
+    // If the domain contains a TLD (has a dot), return as-is to respect user's intention
+    if (trimmedDomain.includes('.') && !trimmedDomain.endsWith('.')) {
+      return trimmedDomain;
+    }
+    
+    // Otherwise, append .test
+    return `${trimmedDomain}.test`;
   }
 
   private hasAllRequiredFlags(flags: Record<string, unknown>): boolean {
