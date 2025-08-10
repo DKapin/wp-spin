@@ -10,6 +10,7 @@ export interface IDockerService {
   checkMemory(): Promise<void>;
   checkPorts(): Promise<void>;
   checkProjectExists(): Promise<boolean>;
+  exec(containerName: string, command: string[]): Promise<string>;
   getLogs(): Promise<string>;
   getPort(service: string): Promise<number>;
   getPortMappings(): Record<number, number>;

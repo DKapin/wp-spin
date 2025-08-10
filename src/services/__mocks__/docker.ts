@@ -115,6 +115,18 @@ export class DockerService implements IDockerService {
     return this.projectExists;
   }
 
+  async exec(containerName: string, command: string[]): Promise<string> {
+    // Mock implementation returns fake command output
+    console.log(chalk.blue(`Mock: Executing command in ${containerName}: ${command.join(' ')}`));
+    
+    // Return different mock responses based on command
+    if (command.includes('php') && command.includes('-m')) {
+      return 'Core\ndate\niconv\nlibxml\nopenssl\npcre\nzlib\nxdebug'; // Include xdebug in modules
+    }
+    
+    return 'Mock command output';
+  }
+
   async getLogs(): Promise<string> {
     return 'Mock logs from WordPress container\nMock logs from MySQL container';
   }

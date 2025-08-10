@@ -147,6 +147,7 @@ wp-spin includes several security enhancements:
 * [`wp-spin share`](#wp-spin-share)
 * [`wp-spin shell`](#wp-spin-shell)
 * [`wp-spin sites ACTION [NAME] [PATH]`](#wp-spin-sites-action-name-path)
+* [`wp-spin start`](#wp-spin-start)
 * [`wp-spin status`](#wp-spin-status)
 * [`wp-spin stop`](#wp-spin-stop)
 * [`wp-spin theme`](#wp-spin-theme)
@@ -295,11 +296,14 @@ Restart the WordPress environment
 
 ```
 USAGE
-  $ wp-spin restart [-d <value>] [-s <value>]
+  $ wp-spin restart [-d <value>] [-s <value>] [--ide vscode|phpstorm|sublime|vim --xdebug]
 
 FLAGS
   -d, --domain=<value>  Custom domain for the site (e.g., example.test)
   -s, --site=<value>    Site path or site name
+      --ide=<option>    IDE to configure for debugging (vscode, phpstorm, sublime, vim)
+                        <options: vscode|phpstorm|sublime|vim>
+      --xdebug          Enable Xdebug for PHP debugging
 
 DESCRIPTION
   Restart the WordPress environment
@@ -398,6 +402,30 @@ EXAMPLES
 ```
 
 _See code: [src/commands/sites.ts](https://github.com/DKapin/wp-spin/blob/v0.7.6/src/commands/sites.ts)_
+
+## `wp-spin start`
+
+Start a WordPress development environment
+
+```
+USAGE
+  $ wp-spin start [-d <value>] [-s <value>] [--ide vscode|phpstorm|sublime|vim --xdebug] [-p <value>]
+    [--ssl]
+
+FLAGS
+  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
+  -p, --port=<value>    Port to run WordPress on (if not specified, an available port will be found)
+  -s, --site=<value>    Site path or site name
+      --ide=<option>    IDE to configure for debugging (vscode, phpstorm, sublime, vim)
+                        <options: vscode|phpstorm|sublime|vim>
+      --ssl             Enable SSL for custom domain
+      --xdebug          Enable Xdebug for PHP debugging
+
+DESCRIPTION
+  Start a WordPress development environment
+```
+
+_See code: [src/commands/start.ts](https://github.com/DKapin/wp-spin/blob/v0.7.5/src/commands/start.ts)_
 
 ## `wp-spin status`
 

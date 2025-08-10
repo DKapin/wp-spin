@@ -120,8 +120,7 @@ describe('DockerService', () => {
   })
   
   describe('checkProjectExists', () => {
-    it.skip('returns true when docker-compose.yml exists', async () => {
-      // This test is skipped until we can better handle the fs mocking
+    it('returns true when docker-compose.yml exists', async () => {
       const dockerComposePath = join(TEST_PROJECT_PATH, 'docker-compose.yml');
       fsStubs.readFile = stub().callsFake(async (path) => {
         if (path === dockerComposePath) {
@@ -147,8 +146,7 @@ describe('DockerService', () => {
   });
   
   describe('start', () => {
-    it.skip('starts the Docker environment', async () => {
-      // This test is skipped until we can better handle the fs mocking
+    it('starts the Docker environment', async () => {
       const dockerComposePath = join(TEST_PROJECT_PATH, 'docker-compose.yml');
       
       fsStubs.readFile = stub().callsFake(async (path) => {

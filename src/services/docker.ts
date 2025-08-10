@@ -173,6 +173,28 @@ export class DockerService implements IDockerService {
   }
 
   /**
+   * Execute a command in a Docker container
+   */
+  async exec(containerName: string, command: string[]): Promise<string> {
+    try {
+      const { stdout } = await execa('docker', ['exec', containerName, ...command], {
+        cwd: this.projectPath,
+      });
+      return stdout;
+    } catch (error) {
+      if (error instanceof Error) {
+        this.prettyError(
+          'Docker Exec Error',
+          error.message,
+          'Please check your Docker container and try again.'
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  /**
    * Gets logs as a string instead of streaming to console
    * @returns The logs from all containers or empty string on error
    */
@@ -238,6 +260,41 @@ export class DockerService implements IDockerService {
     try {
       await this.runDockerCompose(['restart']);
       this.spinner.succeed('WordPress environment restarted');
+    } catch (error) {
+      this.spinner.fail('Failed to restart WordPress environment');
+      if (error instanceof Error) {
+        this.prettyError(
+          'Restart Error',
+          error.message,
+          'Please check your Docker configuration and try again.'
+        );
+      }
+
+      this.prettyError(
+        'Restart Error',
+        'Failed to restart WordPress environment',
+        'Please check your Docker installation and try again.'
+      );
+    }
+  }
+
+  /**
+   * Restart containers with updated environment variables from .env file
+   * This is necessary when environment variables change (like XDEBUG_MODE)
+   */
+  async restartWithEnvReload(): Promise<void> {
+    this.spinner.start('Restarting WordPress environment with updated settings...');
+    try {
+      // Stop containers first
+      await this.runDockerCompose(['down']);
+      
+      // Start containers with updated environment variables
+      await this.runDockerCompose(['up', '-d']);
+      
+      // Wait for MySQL to be ready
+      await this.waitForMySQL();
+      
+      this.spinner.succeed('WordPress environment restarted with updated settings');
     } catch (error) {
       this.spinner.fail('Failed to restart WordPress environment');
       if (error instanceof Error) {
