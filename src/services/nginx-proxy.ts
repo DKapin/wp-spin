@@ -119,7 +119,7 @@ http {
       let config = fs.readFileSync(configPath, 'utf8');
       
       // Update port in proxy_pass directives
-      config = config.replace(
+      config = config.replaceAll(
         /proxy_pass http:\/\/host\.docker\.internal:\d+;/g,
         `proxy_pass http://host.docker.internal:${newPort};`
       );
@@ -188,30 +188,6 @@ http {
     }
   }
 
-  private async ensureContainerRunning(): Promise<void> {
-    try {
-      const containerExists = execSync(`docker ps -a --filter "name=${this.containerName}" --format "{{.Names}}"`, { encoding: 'utf8' }).trim() === this.containerName;
-      
-      if (containerExists) {
-        const isRunning = execSync(`docker ps --filter "name=${this.containerName}" --format "{{.Names}}"`, { encoding: 'utf8' }).trim() === this.containerName;
-        if (!isRunning) {
-          execSync(`docker start ${this.containerName}`, { stdio: 'inherit' });
-        }
-      } else {
-        // Start the container with ports 80 and 443 exposed, and mount certs
-        execSync(`docker run -d --name ${this.containerName} \
-          -p 80:80 -p 443:443 \
-          -v ${this.configDir}/nginx.conf:/etc/nginx/nginx.conf:ro \
-          -v ${this.configDir}/conf.d:/etc/nginx/conf.d:ro \
-          -v ${this.certsDir}:/etc/nginx/certs:ro \
-          --add-host=host.docker.internal:host-gateway \
-          nginx:stable`, { stdio: 'inherit' });
-      }
-    } catch (error) {
-      throw new Error(`Failed to ensure NGINX container is running: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  }
-
   private ensureConfigDir(): void {
     if (!fs.existsSync(this.configDir)) {
       execSync(`sudo mkdir -p ${this.configDir}`, { stdio: 'inherit' });
@@ -277,6 +253,30 @@ http {
     }
   }
 
+  private async ensureContainerRunning(): Promise<void> {
+    try {
+      const containerExists = execSync(`docker ps -a --filter "name=${this.containerName}" --format "{{.Names}}"`, { encoding: 'utf8' }).trim() === this.containerName;
+      
+      if (containerExists) {
+        const isRunning = execSync(`docker ps --filter "name=${this.containerName}" --format "{{.Names}}"`, { encoding: 'utf8' }).trim() === this.containerName;
+        if (!isRunning) {
+          execSync(`docker start ${this.containerName}`, { stdio: 'inherit' });
+        }
+      } else {
+        // Start the container with ports 80 and 443 exposed, and mount certs
+        execSync(`docker run -d --name ${this.containerName} \
+          -p 80:80 -p 443:443 \
+          -v ${this.configDir}/nginx.conf:/etc/nginx/nginx.conf:ro \
+          -v ${this.configDir}/conf.d:/etc/nginx/conf.d:ro \
+          -v ${this.certsDir}:/etc/nginx/certs:ro \
+          --add-host=host.docker.internal:host-gateway \
+          nginx:stable`, { stdio: 'inherit' });
+      }
+    } catch (error) {
+      throw new Error(`Failed to ensure NGINX container is running: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   private ensurePortMapFile(): void {
     if (!fs.existsSync(this.portMapFile)) {
       fs.writeFileSync(this.portMapFile, JSON.stringify({}, null, 2));
@@ -296,7 +296,7 @@ http {
           const content = fs.readFileSync(join(confDir, file), 'utf8');
           const portMatch = content.match(/proxy_pass http:\/\/host\.docker\.internal:(\d+)/);
           if (portMatch) {
-            usedPorts.add(parseInt(portMatch[1], 10));
+            usedPorts.add(Number.parseInt(portMatch[1], 10));
           }
         }
       }
@@ -341,10 +341,6 @@ http {
     });
   }
 
-  private savePortMap(portMap: Record<string, number>): void {
-    fs.writeFileSync(this.portMapFile, JSON.stringify(portMap, null, 2));
-  }
-
   private async reloadNginx(): Promise<void> {
     try {
       execSync(`docker exec ${this.containerName} nginx -s reload`, { stdio: 'inherit' });
@@ -368,6 +364,10 @@ http {
         `Failed to update /etc/hosts. You may need to run the command with sudo or manually remove this line from /etc/hosts:\n${hostsEntry}`
       );
     }
+  }
+
+  private savePortMap(portMap: Record<string, number>): void {
+    fs.writeFileSync(this.portMapFile, JSON.stringify(portMap, null, 2));
   }
 
   private updateNginxConfig(domain: string, port: number, ssl?: boolean): void {
