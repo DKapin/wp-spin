@@ -151,13 +151,14 @@ export abstract class BaseCommand extends Command {
 
   /**
    * Get container names for the current project
+   * Docker Compose automatically adds a -1 suffix to service names
    */
   protected getContainerNames(): { mysql: string; phpmyadmin: string; wordpress: string } {
     const projectName = path.basename(this.docker.getProjectPath());
     return {
-      mysql: `${projectName}_mysql`,
-      phpmyadmin: `${projectName}_phpmyadmin`,
-      wordpress: `${projectName}_wordpress`,
+      mysql: `${projectName}-mysql-1`,
+      phpmyadmin: `${projectName}-phpmyadmin-1`,
+      wordpress: `${projectName}-wordpress-1`,
     };
   }
 
@@ -355,11 +356,9 @@ export abstract class BaseCommand extends Command {
       return this.validatePath(projectRoot);
     }
 
-    // If no project root was found, just return the current directory
-    // This will likely fail later with a more specific error
+    // If no project root was found, exit with error
     this.prettyError(new Error('No WordPress project found in this directory or any parent directory. Make sure you are inside a wp-spin project or specify a valid site path with --site.'));
     this.exit(1);
-    return process.cwd(); // This line will never be reached due to this.exit(1) above
   }
 
   /**
@@ -368,6 +367,44 @@ export abstract class BaseCommand extends Command {
   public async run(): Promise<void> {
     // this is a base class designed to be extended
     // so this method doesn't do anything
+  }
+
+  /**
+   * Verify Xdebug is available in the WordPress container and properly configured
+   */
+  protected async setupXdebugInContainer(containerName: string): Promise<void> {
+    try {
+      // Check if Xdebug is installed (should be pre-installed in our custom image)
+      const isXdebugInstalled = await this.checkXdebugInstalled(containerName);
+      
+      if (!isXdebugInstalled) {
+        throw new Error('Xdebug is not installed in the container. This may indicate an issue with the Docker image build process.');
+      }
+
+      // Verify Xdebug configuration
+      try {
+        const xdebugInfo = await this.docker.exec(containerName, ['php', '--ri', 'xdebug']);
+        this.log(chalk.green('✅ Xdebug is installed and available'));
+        this.logDebug(`Xdebug configuration: ${xdebugInfo}`);
+      } catch (error) {
+        this.log(chalk.yellow('⚠️  Xdebug is installed but may not be properly configured'));
+        this.logDebug(`Xdebug info error: ${error instanceof Error ? error.message : String(error)}`);
+      }
+
+      // Check current Xdebug mode
+      try {
+        const xdebugMode = await this.docker.exec(containerName, ['php', '-r', 'echo ini_get("xdebug.mode");']);
+        this.log(chalk.blue(`🐛 Current Xdebug mode: ${xdebugMode || 'off'}`));
+      } catch (error) {
+        this.logDebug(`Could not retrieve Xdebug mode: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      
+    } catch (error) {
+      this.log(chalk.red('❌ Xdebug verification failed:'));
+      this.log(chalk.red(error instanceof Error ? error.message : String(error)));
+      this.log(chalk.yellow('💡 Tip: Try rebuilding the Docker container with: docker-compose build --no-cache'));
+      throw error;
+    }
   }
 
   /**
@@ -391,6 +428,7 @@ export abstract class BaseCommand extends Command {
       if (!this.hasSafePermissions(parentDir)) {
         throw new Error(`Unsafe file permissions detected for parent directory: ${parentDir}`);
       }
+
       return resolvedPath;
     }
     
@@ -399,6 +437,18 @@ export abstract class BaseCommand extends Command {
     }
 
     return resolvedPath;
+  }
+
+  /**
+   * Check if Xdebug is installed and loaded in the container
+   */
+  private async checkXdebugInstalled(containerName: string): Promise<boolean> {
+    try {
+      const result = await this.docker.exec(containerName, ['php', '-m']);
+      return result.toLowerCase().includes('xdebug');
+    } catch {
+      return false;
+    }
   }
 }
 

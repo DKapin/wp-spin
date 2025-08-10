@@ -309,13 +309,7 @@ export default class Init extends BaseCommand {
     const portManager = new PortManagerService();
     
     // Get port from port manager if domain is specified
-    let wordpressPort = 8080;
-    if (flags?.domain) {
-      wordpressPort = await portManager.allocatePort(flags.domain as string, projectPath);
-    } else {
-      // Find available WordPress port
-      wordpressPort = await portManager.findAvailablePort(8080);
-    }
+    const wordpressPort = flags?.domain ? await portManager.allocatePort(flags.domain as string, projectPath) : await portManager.findAvailablePort(8080);
 
     // Find available PhpMyAdmin port
     const phpMyAdminPort = await portManager.findAvailablePort(wordpressPort + 1);
@@ -339,15 +333,20 @@ version: '3'
 
 services:
   wordpress:
-    image: ${isArm ? 'arm64v8/wordpress:latest' : 'wordpress:latest'}
-    platform: ${isArm ? 'linux/arm64/v8' : 'linux/amd64'}
+    build: 
+      context: .
+      dockerfile: Dockerfile
+      args:
+        WORDPRESS_VERSION: ${this.wordpressVersion === 'latest' ? 'latest' : this.wordpressVersion}
+        TARGETPLATFORM: ${isArm ? 'linux/arm64/v8' : 'linux/amd64'}
     ports:
       - "${wordpressPort}:80"
     environment:
       WORDPRESS_DB_HOST: mysql
       WORDPRESS_DB_USER: wordpress
       WORDPRESS_DB_PASSWORD: wordpress
-      WORDPRESS_DB_NAME: wordpress${configExtra ? `\n      WORDPRESS_CONFIG_EXTRA: |\n        ${configExtra.replaceAll('\n', '\n        ')}` : ''}
+      WORDPRESS_DB_NAME: wordpress
+      XDEBUG_MODE: \${XDEBUG_MODE:-off}${configExtra ? `\n      WORDPRESS_CONFIG_EXTRA: |\n        ${configExtra.replaceAll('\n', '\n        ')}` : ''}
     volumes:
       - ./wp-content:/var/www/html/wp-content
     depends_on:
@@ -385,68 +384,81 @@ volumes:
    * Creates a Dockerfile for the WordPress project
    */
   private async createDockerfile(projectPath: string): Promise<void> {
-    const dockerfileContent = `FROM wordpress:latest
+    const architecture = arch();
+    const isArm = architecture === 'arm64';
+    
+    // Determine base image based on architecture and WordPress version
+    const getBaseImage = () => {
+      if (this.wordpressVersion === 'latest') {
+        return isArm ? 'arm64v8/wordpress:latest' : 'wordpress:latest';
+      }
 
-# Set platform
+      return isArm ? `arm64v8/wordpress:${this.wordpressVersion}` : `wordpress:${this.wordpressVersion}`;
+    };
+
+    const dockerfileContent = `# Use build args for flexible WordPress version and platform
+ARG WORDPRESS_VERSION=latest
+ARG TARGETPLATFORM
+
+FROM ${getBaseImage()}
+
+# Set platform info
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
-RUN echo "I am running on $BUILDPLATFORM, building for $TARGETPLATFORM"
+RUN echo "Building WordPress with Xdebug for platform: $TARGETPLATFORM"
 
-# Install dependencies
+# Install system dependencies needed for Xdebug and WP-CLI
 RUN apt-get update && apt-get install -y \\
     curl \\
     less \\
+    unzip \\
     && rm -rf /var/lib/apt/lists/*
 
 # Install WP-CLI
 RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \\
     && chmod +x wp-cli.phar \\
-    && mv wp-cli.phar /usr/local/bin/wp
+    && mv wp-cli.phar /usr/local/bin/wp \\
+    && wp --info
 
-# Configure PHP memory limits
-RUN echo "memory_limit = 256M" > /usr/local/etc/php/conf.d/memory-limit.ini \\
-    && echo "max_execution_time = 300" >> /usr/local/etc/php/conf.d/memory-limit.ini \\
-    && echo "post_max_size = 64M" >> /usr/local/etc/php/conf.d/memory-limit.ini \\
-    && echo "upload_max_filesize = 64M" >> /usr/local/etc/php/conf.d/memory-limit.ini
+# Configure PHP settings for better development experience
+RUN echo "memory_limit = 512M" > /usr/local/etc/php/conf.d/development.ini \\
+    && echo "max_execution_time = 300" >> /usr/local/etc/php/conf.d/development.ini \\
+    && echo "post_max_size = 64M" >> /usr/local/etc/php/conf.d/development.ini \\
+    && echo "upload_max_filesize = 64M" >> /usr/local/etc/php/conf.d/development.ini \\
+    && echo "display_errors = On" >> /usr/local/etc/php/conf.d/development.ini \\
+    && echo "log_errors = On" >> /usr/local/etc/php/conf.d/development.ini
 
-# Verify WP-CLI installation
-RUN wp --info
+# Install and configure Xdebug
+# Xdebug will be controlled by the XDEBUG_MODE environment variable
+RUN pecl install xdebug \\
+    && docker-php-ext-enable xdebug \\
+    && echo "xdebug.client_host=host.docker.internal" > /usr/local/etc/php/conf.d/xdebug.ini \\
+    && echo "xdebug.client_port=9003" >> /usr/local/etc/php/conf.d/xdebug.ini \\
+    && echo "xdebug.start_with_request=yes" >> /usr/local/etc/php/conf.d/xdebug.ini \\
+    && echo "xdebug.discover_client_host=true" >> /usr/local/etc/php/conf.d/xdebug.ini \\
+    && echo "xdebug.idekey=docker" >> /usr/local/etc/php/conf.d/xdebug.ini \\
+    && echo "xdebug.log=/var/log/xdebug.log" >> /usr/local/etc/php/conf.d/xdebug.ini
 
-# Set working directory
+# Create custom entrypoint script that sets Xdebug mode based on environment variable
+RUN echo '#!/bin/bash' > /usr/local/bin/wp-spin-entrypoint.sh \\
+    && echo '# Set Xdebug mode based on environment variable (defaults to off)' >> /usr/local/bin/wp-spin-entrypoint.sh \\
+    && echo 'echo "xdebug.mode=\${XDEBUG_MODE:-off}" > /usr/local/etc/php/conf.d/xdebug-mode.ini' >> /usr/local/bin/wp-spin-entrypoint.sh \\
+    && echo 'echo "Xdebug mode set to: \${XDEBUG_MODE:-off}"' >> /usr/local/bin/wp-spin-entrypoint.sh \\
+    && echo '# Call the original WordPress entrypoint' >> /usr/local/bin/wp-spin-entrypoint.sh \\
+    && echo 'exec docker-entrypoint.sh "$@"' >> /usr/local/bin/wp-spin-entrypoint.sh \\
+    && chmod +x /usr/local/bin/wp-spin-entrypoint.sh
+
+# Verify installations
+RUN php -m | grep -i xdebug && echo "Xdebug installed successfully" || echo "Xdebug installation failed"
+
+# Set the working directory
 WORKDIR /var/www/html
 
-# Copy WordPress files to a temporary location
-RUN cp -r /usr/src/wordpress/. /tmp/wordpress/
-
-# Create entrypoint script
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-ENTRYPOINT ["docker-entrypoint.sh"]
+# Use our custom entrypoint
+ENTRYPOINT ["/usr/local/bin/wp-spin-entrypoint.sh"]
 CMD ["apache2-foreground"]`;
 
     await fs.writeFile(join(projectPath, 'Dockerfile'), dockerfileContent);
-
-    // Create custom entrypoint script
-    const entrypointContent = `#!/bin/bash
-set -euo pipefail
-
-# If wordpress directory is empty, copy WordPress core files
-if [ ! -f "/var/www/html/wp-config.php" ]; then
-  echo "WordPress not found in /var/www/html - copying now..."
-  cp -r /tmp/wordpress/. /var/www/html/
-  echo "Complete! WordPress has been successfully copied to /var/www/html"
-fi
-
-# Ensure correct permissions
-chown -R www-data:www-data /var/www/html
-find /var/www/html -type d -exec chmod 755 {} \\;
-find /var/www/html -type f -exec chmod 644 {} \\;
-
-# Execute the original entrypoint script
-exec docker-php-entrypoint "$@"`;
-
-    await fs.writeFile(join(projectPath, 'docker-entrypoint.sh'), entrypointContent);
   }
   
   /**
@@ -463,7 +475,8 @@ WORDPRESS_DB_NAME=wordpress
 MYSQL_ROOT_PASSWORD=${rootPassword}
 MYSQL_DATABASE=wordpress
 MYSQL_USER=wordpress
-MYSQL_PASSWORD=${dbPassword}`;
+MYSQL_PASSWORD=${dbPassword}
+XDEBUG_MODE=off`;
 
     await fs.writeFile(join(projectPath, '.env'), envContent);
     
@@ -813,30 +826,6 @@ FLUSH PRIVILEGES;
     return currentDir;
   }
 
-  /**
-   * Normalizes a domain by ensuring it ends with .test
-   * @param domain - The domain to normalize
-   * @returns The normalized domain with .test suffix
-   */
-  private normalizeDomain(domain: string): string {
-    if (!domain) return domain;
-    
-    const trimmedDomain = domain.trim();
-    
-    // If the domain already ends with .test, return as-is
-    if (trimmedDomain.endsWith('.test')) {
-      return trimmedDomain;
-    }
-    
-    // If the domain contains a TLD (has a dot), return as-is to respect user's intention
-    if (trimmedDomain.includes('.') && !trimmedDomain.endsWith('.')) {
-      return trimmedDomain;
-    }
-    
-    // Otherwise, append .test
-    return `${trimmedDomain}.test`;
-  }
-
   private hasAllRequiredFlags(flags: Record<string, unknown>): boolean {
     // Only require site-name, domain, and ssl to skip interactive mode
     return (
@@ -848,9 +837,9 @@ FLUSH PRIVILEGES;
 
   private async installWordPress(siteName: string, _version: string, flags: Record<string, unknown>): Promise<void> {
     try {
-      // Get the project name from the path
-      const projectName = this.projectPath.split('/').pop() || 'wordpress';
-      const containerName = `${projectName}-wordpress-1`;
+      // Get the correct container name from the base class method
+      const containerNames = this.getContainerNames();
+      const containerName = containerNames.wordpress;
 
       // Install WP-CLI properly for the container architecture
       execSync(
@@ -986,7 +975,7 @@ upload_max_filesize = 64M`;
       );
 
       // Update site URLs - skip if domain is specified (already set in wp-config.php)
-      if (!flags.domain) {
+      if (flags.domain === undefined) {
         // Only update URLs to localhost if no custom domain is specified
         execSync(
           `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update home "http://localhost:${flags.port}" --allow-root'`,
@@ -1109,7 +1098,7 @@ require_once ABSPATH . 'wp-settings.php';`;
       return true;
     }
   }
-  
+
   /**
    * Merge WordPress core files into target directory
    */
@@ -1154,6 +1143,30 @@ require_once ABSPATH . 'wp-settings.php';`;
     
     // Wait for all copy operations to complete
     await Promise.all(copyOperations);
+  }
+
+  /**
+   * Normalizes a domain by ensuring it ends with .test
+   * @param domain - The domain to normalize
+   * @returns The normalized domain with .test suffix
+   */
+  private normalizeDomain(domain: string): string {
+    if (!domain) return domain;
+    
+    const trimmedDomain = domain.trim();
+    
+    // If the domain already ends with .test, return as-is
+    if (trimmedDomain.endsWith('.test')) {
+      return trimmedDomain;
+    }
+    
+    // If the domain contains a TLD (has a dot), return as-is to respect user's intention
+    if (trimmedDomain.includes('.') && !trimmedDomain.endsWith('.')) {
+      return trimmedDomain;
+    }
+    
+    // Otherwise, append .test
+    return `${trimmedDomain}.test`;
   }
   
   /**
@@ -1314,6 +1327,9 @@ desktop.ini
       fs.chmodSync(projectPath, 0o755);
       this.projectPath = projectPath; // Set the project path here
 
+      // Create Dockerfile first (required by docker-compose.yml)
+      await this.createDockerfile(projectPath);
+      
       // Create docker-compose.yml with architecture-specific images
       await this.createDockerComposeFile(projectPath, flags);
 
