@@ -16,6 +16,11 @@ A CLI tool for managing Docker-based WordPress environments with ease. Quickly s
 - 🐳 Docker-based isolation for multiple projects
 - 🔧 Easy-to-use CLI commands
 - 🔒 Enhanced security features
+- 🐛 **Xdebug debugging support** with IDE-specific setup instructions
+- 🌐 Custom local domains with optional HTTPS/SSL support
+- 🏗️ WordPress Multisite network support (subdomain and path-based)
+- 🔗 Public sharing via ngrok tunnels
+- 📱 Architecture-aware Docker images (ARM64/Apple Silicon + x86 support)
 
 ## Prerequisites
 
@@ -85,6 +90,41 @@ wp-spin start
 
 Your WordPress site will be available at `http://localhost:8080` and PHPMyAdmin at `http://localhost:8081`.
 
+## Advanced Project Initialization
+
+The `wp-spin init` command supports many advanced options for customizing your WordPress environment:
+
+### Basic Initialization
+```bash
+wp-spin init my-site                    # Basic setup
+wp-spin init my-site --site-name="My Blog"  # Custom site title
+wp-spin init my-site --wordpress-version=6.4  # Specific WordPress version
+```
+
+### Custom Domains and SSL
+```bash
+wp-spin init my-site --domain=mysite.test           # Custom local domain
+wp-spin init my-site --domain=mysite.test --ssl     # With HTTPS/SSL certificate
+```
+
+### WordPress Multisite Networks
+```bash
+# Subdomain multisite (requires custom domain)
+wp-spin init network --multisite --multisite-type=subdomain --domain=net.test
+
+# Path-based multisite  
+wp-spin init network --multisite --multisite-type=path --domain=net.test
+```
+
+### All-in-One Example
+```bash
+wp-spin init my-project \
+  --site-name="My Development Site" \
+  --domain=dev.test \
+  --ssl \
+  --wordpress-version=latest
+```
+
 ## Interactive Mode, Local URLs, and HTTPS
 
 ### Interactive Mode
@@ -124,6 +164,115 @@ To manage multiple sites:
 1. Create each site in a separate directory
 2. Use different ports for each site (automatically handled)
 3. Start/stop sites independently
+
+## PHP Debugging with Xdebug
+
+wp-spin includes **built-in Xdebug support** for PHP debugging, making it easy to debug WordPress themes, plugins, and core functionality.
+
+### Quick Start with Xdebug
+
+1. **Start your site with Xdebug enabled:**
+   ```bash
+   wp-spin start --xdebug
+   ```
+   or restart an existing site:
+   ```bash
+   wp-spin restart --xdebug
+   ```
+
+2. **Choose your IDE** when prompted, or specify it directly:
+   ```bash
+   wp-spin start --xdebug --ide=vscode
+   wp-spin restart --xdebug --ide=phpstorm
+   ```
+
+3. **Follow the IDE-specific setup instructions** that are displayed automatically
+
+### Supported IDEs
+
+wp-spin provides setup instructions for:
+- **VS Code** (`--ide=vscode`) - Complete launch.json configuration
+- **PhpStorm/IntelliJ IDEA** (`--ide=phpstorm`) - Server and debug setup
+- **Sublime Text** (`--ide=sublime`) - Xdebug Client package configuration  
+- **Vim/Neovim** (`--ide=vim`) - Vdebug plugin setup
+- **Generic setup** for other editors
+
+### How It Works
+
+- **Xdebug is pre-installed** in the Docker container but disabled by default for performance
+- **Environment variable control**: `XDEBUG_MODE=off` (default) or `XDEBUG_MODE=debug` (when enabled)
+- **Port 9003**: Standard Xdebug port for IDE connections
+- **Path mappings**: Container path `/var/www/html` maps to your local project directory
+- **Host connection**: Uses `host.docker.internal` for container-to-host communication
+
+### Example VS Code Setup
+
+When you run `wp-spin start --xdebug --ide=vscode`, you'll get a complete `.vscode/launch.json` configuration:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Listen for Xdebug",
+      "type": "php",
+      "request": "launch", 
+      "port": 9003,
+      "pathMappings": {
+        "/var/www/html/wp-content": "${workspaceFolder}/wp-content"
+      },
+      "log": true
+    }
+  ]
+}
+```
+
+### Debugging Workflow
+
+1. **Enable Xdebug** with `wp-spin start --xdebug` or `wp-spin restart --xdebug`
+2. **Configure your IDE** using the provided instructions
+3. **Set breakpoints** in your PHP files (themes, plugins, etc.)
+4. **Start debugging** in your IDE (usually F5 or click debug icon)
+5. **Visit your WordPress site** to trigger the breakpoints
+6. **Step through code**, inspect variables, and debug issues
+
+### Disabling Xdebug
+
+To disable Xdebug for better performance:
+```bash
+wp-spin restart
+```
+This will restart with `XDEBUG_MODE=off` (the default setting).
+
+## WordPress Multisite Support
+
+wp-spin supports WordPress Multisite networks for managing multiple WordPress sites from a single installation.
+
+### Creating a Multisite Network
+
+You can enable Multisite during initialization:
+
+```bash
+# Subdomain-based multisite (requires custom domain)
+wp-spin init my-network --multisite --multisite-type=subdomain --domain=mynetwork.test
+
+# Path-based multisite
+wp-spin init my-network --multisite --multisite-type=path --domain=mynetwork.test
+```
+
+### Multisite Types
+
+- **Subdomain**: Sites accessible as `site1.mynetwork.test`, `site2.mynetwork.test`
+- **Path**: Sites accessible as `mynetwork.test/site1`, `mynetwork.test/site2`
+
+**Note**: Subdomain multisite requires a custom domain (`--domain` flag) for proper subdomain routing.
+
+### Interactive Multisite Setup
+
+When using interactive mode (`wp-spin init`), you'll be prompted to:
+1. Enable multisite (yes/no)
+2. Choose multisite type (subdomain or path)  
+3. Configure a custom domain (required for subdomain type)
 
 ## Security Features
 
@@ -545,35 +694,59 @@ _See code: [src/commands/unshare.ts](https://github.com/DKapin/wp-spin/blob/v0.7
    wp-spin start
    ```
 
-2. **Managing Themes**
+2. **Development with Debugging**
    ```bash
-   wp-spin theme add twenty-twenty-four
-   wp-spin theme list
+   wp-spin start --xdebug --ide=vscode    # Start with Xdebug enabled
+   # Set breakpoints in your IDE, then visit your site
+   wp-spin restart                        # Disable Xdebug for better performance
    ```
 
-3. **Managing Plugins**
+3. **Managing Themes**
    ```bash
-   wp-spin plugin add woocommerce
-   wp-spin plugin list
+   wp-spin theme --add twentytwentyfour
+   wp-spin theme --list
    ```
 
-4. **Accessing Logs**
+4. **Managing Plugins**
    ```bash
-   wp-spin logs
+   wp-spin plugin --add woocommerce
+   wp-spin plugin --list
    ```
 
-5. **Database Management**
+5. **Accessing Logs**
+   ```bash
+   wp-spin logs                           # WordPress logs
+   wp-spin logs --container=mysql         # MySQL logs  
+   wp-spin logs --container=phpmyadmin    # PHPMyAdmin logs
+   ```
+
+6. **Database Management**
    - Access PHPMyAdmin at `http://localhost:8081`
    - Default credentials are in your project's `.env` file
+
+7. **Shell Access**
+   ```bash
+   wp-spin shell                          # WordPress container shell
+   wp-spin shell --container=mysql        # MySQL container shell
+   ```
+
+8. **Public Sharing**
+   ```bash
+   wp-spin share                          # Share via ngrok tunnel
+   wp-spin unshare                        # Stop sharing
+   ```
 
 ## Project Structure
 
 ```
 my-project/
-├── wordpress/         # WordPress core files
-├── docker-compose.yml # Docker configuration
-├── Dockerfile        # Custom WordPress image
-└── .env             # Environment variables
+├── wp-content/         # WordPress themes, plugins, uploads
+├── docker-compose.yml  # Docker services configuration  
+├── Dockerfile         # Custom WordPress image with Xdebug
+├── .env               # Environment variables (XDEBUG_MODE, DB credentials)
+├── .wp-spin           # Project configuration (domain, version, etc.)
+├── .gitignore         # Git ignore rules for WordPress projects  
+└── .credentials.json  # Database credentials backup (secure)
 ```
 
 ## Troubleshooting
@@ -589,8 +762,25 @@ Common issues and solutions:
    - Check logs with `wp-spin logs`
 
 3. **Permission Issues**
-   - Ensure proper file permissions in the `wordpress` directory
+   - Ensure proper file permissions in the `wp-content` directory
    - Use `wp-spin shell` to access the container directly
+
+4. **Xdebug Not Working**
+   - Verify Xdebug is enabled: `wp-spin restart --xdebug`
+   - Check container logs: `wp-spin logs`
+   - Verify IDE is listening on port 9003
+   - Ensure path mappings are correct: `/var/www/html` → your project directory
+   - Test with a simple `xdebug_info()` call in PHP
+
+5. **Custom Domain Issues**
+   - Ensure you have admin/sudo permissions (needed for `/etc/hosts` modification)
+   - For SSL: Install `mkcert` and run `mkcert -install` first
+   - Check if nginx proxy is running: `docker ps | grep nginx`
+
+6. **Multisite Issues**
+   - Subdomain multisite requires a custom domain (`--domain` flag)
+   - Ensure WordPress constants are properly set in `wp-config.php`
+   - Check that DNS/hosts file entries include subdomain wildcards
 
 ## Contributing
 
