@@ -425,7 +425,7 @@ DESCRIPTION
   Start a WordPress development environment
 ```
 
-_See code: [src/commands/start.ts](https://github.com/DKapin/wp-spin/blob/v0.7.5/src/commands/start.ts)_
+_See code: [src/commands/start.ts](https://github.com/DKapin/wp-spin/blob/v0.7.6/src/commands/start.ts)_
 
 ## `wp-spin status`
 
