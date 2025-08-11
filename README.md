@@ -358,7 +358,7 @@ EXAMPLES
   $ wp-spin logs --container=mysql --site=my-wp-site
 ```
 
-_See code: [src/commands/logs.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/logs.ts)_
+_See code: [src/commands/logs.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/logs.ts)_
 
 ## `wp-spin plugin`
 
@@ -387,7 +387,7 @@ EXAMPLES
   $ wp-spin plugin --remove woocommerce
 ```
 
-_See code: [src/commands/plugin.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/plugin.ts)_
+_See code: [src/commands/plugin.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/plugin.ts)_
 
 ## `wp-spin ps`
 
@@ -416,7 +416,7 @@ EXAMPLES
   $ wp-spin ps --site=/path/to/my-site
 ```
 
-_See code: [src/commands/ps.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/ps.ts)_
+_See code: [src/commands/ps.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/ps.ts)_
 
 ## `wp-spin remove`
 
@@ -437,7 +437,7 @@ EXAMPLES
   $ wp-spin remove mysite
 ```
 
-_See code: [src/commands/remove.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/remove.ts)_
+_See code: [src/commands/remove.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/remove.ts)_
 
 ## `wp-spin restart`
 
@@ -461,7 +461,7 @@ EXAMPLES
   $ wp-spin restart
 ```
 
-_See code: [src/commands/restart.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/restart.ts)_
+_See code: [src/commands/restart.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/restart.ts)_
 
 ## `wp-spin share`
 
@@ -491,7 +491,7 @@ EXAMPLES
   $ wp-spin share --domain=mysite.ngrok-free.app
 ```
 
-_See code: [src/commands/share.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/share.ts)_
+_See code: [src/commands/share.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/share.ts)_
 
 ## `wp-spin shell`
 
@@ -522,7 +522,7 @@ EXAMPLES
   $ wp-spin shell --container=mysql --site=my-wp-site
 ```
 
-_See code: [src/commands/shell.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/shell.ts)_
+_See code: [src/commands/shell.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/shell.ts)_
 
 ## `wp-spin sites ACTION [NAME] [PATH]`
 
@@ -550,7 +550,7 @@ EXAMPLES
   $ wp-spin sites update my-site /new/path/to/site
 ```
 
-_See code: [src/commands/sites.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/sites.ts)_
+_See code: [src/commands/sites.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/sites.ts)_
 
 ## `wp-spin start`
 
@@ -574,7 +574,7 @@ DESCRIPTION
   Start a WordPress development environment
 ```
 
-_See code: [src/commands/start.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/start.ts)_
+_See code: [src/commands/start.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/start.ts)_
 
 ## `wp-spin status`
 
@@ -603,7 +603,7 @@ EXAMPLES
   $ wp-spin ps --site=/path/to/my-site
 ```
 
-_See code: [src/commands/status.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/status.ts)_
+_See code: [src/commands/status.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/status.ts)_
 
 ## `wp-spin stop`
 
@@ -626,7 +626,7 @@ EXAMPLES
   $ wp-spin stop --site=./path/to/wordpress
 ```
 
-_See code: [src/commands/stop.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/stop.ts)_
+_See code: [src/commands/stop.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/stop.ts)_
 
 ## `wp-spin theme`
 
@@ -655,7 +655,7 @@ EXAMPLES
   $ wp-spin theme --remove twentytwentyfour
 ```
 
-_See code: [src/commands/theme.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/theme.ts)_
+_See code: [src/commands/theme.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/theme.ts)_
 
 ## `wp-spin unshare`
 
@@ -682,7 +682,7 @@ EXAMPLES
   $ wp-spin unshare --site=my-site
 ```
 
-_See code: [src/commands/unshare.ts](https://github.com/DKapin/wp-spin/blob/v0.7.7/src/commands/unshare.ts)_
+_See code: [src/commands/unshare.ts](https://github.com/DKapin/wp-spin/blob/v0.8.0/src/commands/unshare.ts)_
 <!-- commandsstop -->
 
 ## Development Workflow
