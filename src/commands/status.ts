@@ -17,7 +17,6 @@ export default class Status extends BaseCommand {
   static hidden = false;
 
   async run(): Promise<void> {
-    console.log('DEBUG: Status command running');
     const spinner = ora('Checking WordPress environment...');
     spinner.start();
 
@@ -49,6 +48,10 @@ export default class Status extends BaseCommand {
         console.log('\n🌍 Access your site at:');
         console.log(chalk.blue(`   WordPress: http://localhost:${ports.wordpress}`));
         console.log(chalk.blue(`   phpMyAdmin: http://localhost:${ports.phpmyadmin}`));
+        
+        if (ports.mailhog) {
+          console.log(chalk.yellow(`   📧 MailHog: http://localhost:${ports.mailhog}`));
+        }
       } else {
         console.log(chalk.red('✖ WordPress environment is not running'));
         console.log(chalk.yellow('  Use `wp-spin start` to start the environment.'));
@@ -98,9 +101,10 @@ export default class Status extends BaseCommand {
     }
   }
   
-  private getPortsFromContainers(containers: Array<{name: string; ports: string; status: string}>): {phpmyadmin: string; wordpress: string} {
+  private getPortsFromContainers(containers: Array<{name: string; ports: string; status: string}>): {mailhog?: string; phpmyadmin: string; wordpress: string} {
     let wordpressPort = '8080';
     let phpmyadminPort = '8081';
+    let mailhogPort: string | undefined;
     
     for (const container of containers) {
       if (container.name.includes('wordpress') && container.ports) {
@@ -113,10 +117,17 @@ export default class Status extends BaseCommand {
         if (match && match[1]) {
           phpmyadminPort = match[1];
         }
+      } else if (container.name.includes('mailhog') && container.ports) {
+        // MailHog web UI runs on port 8025 internally
+        const match = container.ports.match(/0\.0\.0\.0:(\d+)->8025\/tcp/);
+        if (match && match[1]) {
+          mailhogPort = match[1];
+        }
       }
     }
     
     return {
+      mailhog: mailhogPort,
       phpmyadmin: phpmyadminPort,
       wordpress: wordpressPort,
     };

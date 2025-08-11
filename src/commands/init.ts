@@ -30,11 +30,17 @@ export default class Init extends BaseCommand {
     '$ wp-spin init my-site --wordpress-version=6.4',
     '$ wp-spin init my-site --domain=mysite',
     '$ wp-spin init my-site --domain=mysite.test',
+    '$ wp-spin init my-site --mailhog',
+    '$ wp-spin init network --multisite --multisite-type=subdomain --domain=net.test --mailhog',
   ];
   static flags = {
     ...baseFlags,
     domain: Flags.string({
       description: 'Custom domain to use for the WordPress site (e.g., mysite.test). If no TLD is provided, .test will be automatically appended.',
+    }),
+    mailhog: Flags.boolean({
+      default: false,
+      description: 'Install MailHog for local email testing (also installs WP Mail SMTP plugin)',
     }),
     multisite: Flags.boolean({
       default: false,
@@ -314,9 +320,21 @@ export default class Init extends BaseCommand {
     // Find available PhpMyAdmin port
     const phpMyAdminPort = await portManager.findAvailablePort(wordpressPort + 1);
 
+    // Find available MailHog ports only if MailHog is enabled
+    let mailhogWebPort: number | undefined;
+    let mailhogSmtpPort: number | undefined;
+    if (flags?.mailhog) {
+      mailhogWebPort = await portManager.findAvailablePort(phpMyAdminPort + 1);
+      mailhogSmtpPort = await portManager.findAvailablePort(mailhogWebPort + 1);
+    }
+
     // Store the WordPress port in flags for later use
     if (flags) {
       flags.port = wordpressPort;
+      if (flags.mailhog) {
+        flags.mailhogWebPort = mailhogWebPort;
+        flags.mailhogSmtpPort = mailhogSmtpPort;
+      }
     }
 
     // Prepare WORDPRESS_CONFIG_EXTRA if multisite is enabled
@@ -350,7 +368,7 @@ services:
     volumes:
       - ./wp-content:/var/www/html/wp-content
     depends_on:
-      - mysql
+      - mysql${flags?.mailhog ? '\n      - mailhog' : ''}
 
   mysql:
     image: ${isArm ? 'mariadb:10.6' : 'mysql:5.7'}
@@ -373,6 +391,14 @@ services:
     depends_on:
       - mysql
 
+${flags?.mailhog ? `
+  mailhog:
+    image: mailhog/mailhog:latest
+    platform: ${isArm ? 'linux/amd64' : 'linux/amd64'}
+    ports:
+      - "${mailhogWebPort}:8025"   # Web UI
+      - "${mailhogSmtpPort}:1025"  # SMTP server
+` : ''}
 volumes:
   mysql_data:
 `;
@@ -550,20 +576,31 @@ FLUSH PRIVILEGES;
     this.log(`\nYou can access your site at:`);
     if (flags.domain) {
       this.log(`  ${chalk.cyan(`${protocol}://${flags.domain}`)}`);
+    } else {
+      this.log(`  ${chalk.cyan(`${protocol}://localhost:${port}`)}`);
     }
-
-    this.log(`  ${chalk.cyan(`${protocol}://localhost:${port}`)}`);
     
     this.log(`\nWordPress admin:`);
     if (flags.domain) {
       this.log(`  ${chalk.cyan(`${protocol}://${flags.domain}/wp-admin`)}`);
+    } else {
+      this.log(`  ${chalk.cyan(`${protocol}://localhost:${port}/wp-admin`)}`);
     }
-    
-    this.log(`  ${chalk.cyan(`${protocol}://localhost:${port}/wp-admin`)}`);
 
     this.log(`\nDefault credentials:`);
     this.log(`  Username: ${chalk.cyan('admin')}`);
     this.log(`  Password: ${chalk.cyan('password')}`);
+
+    this.log(`\nDatabase management:`);
+    this.log(`  phpMyAdmin: ${chalk.cyan(`http://localhost:${flags.phpmyadminPort || (port + 1)}`)}`);
+
+    // Display MailHog information (if enabled)
+    if (flags.mailhog && flags.mailhogWebPort) {
+      this.log(`\n${chalk.yellow('📧 Email Testing with MailHog:')}`);
+      this.log(`  Web UI: ${chalk.cyan(`http://localhost:${flags.mailhogWebPort}`)}`);
+      this.log(`  SMTP Server: ${chalk.cyan(`localhost:${flags.mailhogSmtpPort}`)}`);
+      this.log(`  ${chalk.gray('All emails sent from WordPress will be captured by MailHog for testing')}`);
+    }
   }
 
   private async findAvailablePort(startPort: number, usedPorts: Set<number>): Promise<number> {
@@ -706,7 +743,7 @@ FLUSH PRIVILEGES;
 
   private async handleInteractiveMode(args: Record<string, unknown>, flags: Record<string, unknown>): Promise<{ args: Record<string, unknown>, flags: Record<string, unknown> }> {
     const prompt = createPromptModule();
-    const interactiveAnswers: { domain?: string; multisite?: boolean; 'multisite-type'?: string; name?: string; ssl?: boolean } = {};
+    const interactiveAnswers: { domain?: string; mailhog?: boolean; multisite?: boolean; 'multisite-type'?: string; name?: string; ssl?: boolean } = {};
 
     // 1. Site name
     if (!args.name) {
@@ -784,6 +821,18 @@ FLUSH PRIVILEGES;
         type: 'confirm'
       });
       interactiveAnswers.ssl = useSSL;
+    }
+
+    // 7. MailHog prompt if not explicitly provided
+    const mailhogFlagExplicitlyProvided = process.argv.includes('--mailhog') || process.argv.includes('--no-mailhog');
+    if (!mailhogFlagExplicitlyProvided) {
+      const { useMailHog } = await prompt({
+        default: false,
+        message: 'Do you want to install MailHog for local email testing?\n  This will also install the WP Mail SMTP plugin to ensure emails work properly.',
+        name: 'useMailHog',
+        type: 'confirm'
+      });
+      interactiveAnswers.mailhog = useMailHog;
     }
 
     // Merge interactive answers into args/flags
@@ -970,7 +1019,7 @@ upload_max_filesize = 64M`;
         : `http://localhost:${flags.port}`;
       
       execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core install --url="${installUrl}" --title="${siteName}" --admin_user=admin --admin_password=password --admin_email=admin@example.com --allow-root'`,
+        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core install --url="${installUrl}" --title="${siteName}" --admin_user=admin --admin_password=password --admin_email=admin@example.com --allow-root 2>&1 | grep -v "sendmail: not found"'`,
         { stdio: 'inherit' }
       );
 
@@ -996,6 +1045,47 @@ upload_max_filesize = 64M`;
         `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp theme install twentytwentyfour --activate --allow-root'`,
         { stdio: 'inherit' }
       );
+
+      // Configure WordPress to use MailHog for email (if enabled)
+      if (flags.mailhog) {
+        console.log('Configuring WordPress to use MailHog for local email testing...');
+        
+        // Install and configure wp-mail-smtp plugin for MailHog
+        execSync(
+          `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp plugin install wp-mail-smtp --activate --allow-root'`,
+          { stdio: 'inherit' }
+        );
+
+        // Configure wp-mail-smtp plugin for MailHog
+        const mailhogSmtpPort = 1025; // Internal Docker port for SMTP
+        /* eslint-disable camelcase */
+        const wpMailSmtpConfig = {
+          mail: {
+            from_email: 'admin@example.com',
+            from_name: siteName,
+            mailer: 'smtp',
+            return_path: true
+          },
+          smtp: {
+            auth: false,
+            autotls: false,
+            encryption: 'none',
+            host: 'mailhog',
+            pass: '',
+            port: mailhogSmtpPort,
+            user: ''
+          }
+        };
+        /* eslint-enable camelcase */
+        
+        const configJson = JSON.stringify(wpMailSmtpConfig);
+        execSync(
+          `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update wp_mail_smtp ${JSON.stringify(configJson)} --format=json --allow-root'`,
+          { stdio: 'inherit' }
+        );
+
+        console.log('MailHog email configuration completed successfully!');
+      }
 
       // Set up multisite if requested
       if (flags.multisite) {
@@ -1344,6 +1434,40 @@ desktop.ini
       
       // Update the port in flags to ensure consistency
       flags.port = port;
+
+      // Get MailHog ports from Docker containers (if MailHog is enabled)
+      if (flags.mailhog) {
+        try {
+          const { execSync } = await import('node:child_process');
+          const containerNames = this.getContainerNames();
+          const result = execSync(`docker port ${containerNames.mailhog}`, { cwd: projectPath, encoding: 'utf8' });
+          
+          // Parse the output to get the actual ports
+          // Expected format: "1025/tcp -> 0.0.0.0:XXXXX" and "8025/tcp -> 0.0.0.0:YYYYY"
+          const lines = result.split('\n');
+          let mailhogWebPort: number | undefined;
+          let mailhogSmtpPort: number | undefined;
+          
+          for (const line of lines) {
+            if (line.includes('8025/tcp')) {
+              const match = line.match(/0\.0\.0\.0:(\d+)/);
+              if (match) {
+                mailhogWebPort = Number.parseInt(match[1], 10);
+              }
+            } else if (line.includes('1025/tcp')) {
+              const match = line.match(/0\.0\.0\.0:(\d+)/);
+              if (match) {
+                mailhogSmtpPort = Number.parseInt(match[1], 10);
+              }
+            }
+          }
+          
+          if (mailhogWebPort) flags.mailhogWebPort = mailhogWebPort;
+          if (mailhogSmtpPort) flags.mailhogSmtpPort = mailhogSmtpPort;
+        } catch {
+          console.warn('Note: Could not retrieve MailHog ports from Docker - MailHog URLs may not be displayed');
+        }
+      }
 
       // Wait for WordPress to be ready
       spinner.text = 'Waiting for WordPress to be ready...';

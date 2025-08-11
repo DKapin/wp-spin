@@ -153,9 +153,10 @@ export abstract class BaseCommand extends Command {
    * Get container names for the current project
    * Docker Compose automatically adds a -1 suffix to service names
    */
-  protected getContainerNames(): { mysql: string; phpmyadmin: string; wordpress: string } {
+  protected getContainerNames(): { mailhog: string; mysql: string; phpmyadmin: string; wordpress: string } {
     const projectName = path.basename(this.docker.getProjectPath());
     return {
+      mailhog: `${projectName}-mailhog-1`,
       mysql: `${projectName}-mysql-1`,
       phpmyadmin: `${projectName}-phpmyadmin-1`,
       wordpress: `${projectName}-wordpress-1`,
@@ -194,10 +195,8 @@ export abstract class BaseCommand extends Command {
       const ownerExecute = isDirectory ? Number.parseInt(modeStr[0], 8) >= 1 : true;
       
       const isSafe = ownerRead && ownerExecute;
-      console.log(`DEBUG: Checking permissions for ${path}: mode=${modeStr}, isSafe=${isSafe}`);
       return isSafe;
     } catch (error) {
-      console.log(`DEBUG: Error checking permissions for ${path}:`, error);
       return false;
     }
   }
@@ -411,14 +410,11 @@ export abstract class BaseCommand extends Command {
    * Validate and sanitize a path
    */
   protected validatePath(inputPath: string): string {
-    console.log(`DEBUG: Validating path: ${inputPath}`);
-    
     if (!this.isSafePath(inputPath)) {
       throw new Error('Path traversal detected');
     }
 
     const resolvedPath = path.resolve(inputPath);
-    console.log(`DEBUG: Resolved path: ${resolvedPath}`);
     
     // For new projects, the directory might not exist yet
     if (!fs.existsSync(resolvedPath)) {
