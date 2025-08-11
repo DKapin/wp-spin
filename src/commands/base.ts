@@ -196,7 +196,7 @@ export abstract class BaseCommand extends Command {
       
       const isSafe = ownerRead && ownerExecute;
       return isSafe;
-    } catch (error) {
+    } catch {
       return false;
     }
   }

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { Args, Config, Flags } from '@oclif/core';
 import chalk from 'chalk';
 import { execa } from 'execa';
@@ -306,6 +307,7 @@ export default class Init extends BaseCommand {
   /**
    * Creates a docker-compose.yml file for the WordPress project
    */
+  // eslint-disable-next-line complexity
   private async createDockerComposeFile(projectPath: string, flags?: Record<string, unknown>): Promise<void> {
     const dockerComposePath = join(projectPath, 'docker-compose.yml');
     const architecture = arch();
@@ -1436,6 +1438,7 @@ desktop.ini
       flags.port = port;
 
       // Get MailHog ports from Docker containers (if MailHog is enabled)
+      /* eslint-disable max-depth */
       if (flags.mailhog) {
         try {
           const { execSync } = await import('node:child_process');
@@ -1468,6 +1471,7 @@ desktop.ini
           console.warn('Note: Could not retrieve MailHog ports from Docker - MailHog URLs may not be displayed');
         }
       }
+      /* eslint-enable max-depth */
 
       // Wait for WordPress to be ready
       spinner.text = 'Waiting for WordPress to be ready...';
