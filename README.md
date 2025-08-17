@@ -288,6 +288,7 @@ wp-spin includes several security enhancements:
 
 <!-- commands -->
 * [`wp-spin containers`](#wp-spin-containers)
+* [`wp-spin db ACTION [TARGET]`](#wp-spin-db-action-target)
 * [`wp-spin logs`](#wp-spin-logs)
 * [`wp-spin plugin`](#wp-spin-plugin)
 * [`wp-spin ps`](#wp-spin-ps)
@@ -328,6 +329,52 @@ EXAMPLES
 
   $ wp-spin ps --site=/path/to/my-site
 ```
+
+## `wp-spin db ACTION [TARGET]`
+
+Manage WordPress database operations
+
+```
+USAGE
+  $ wp-spin db ACTION [TARGET] [--exclude-tables <value>] [-f] [--search-replace <value>] [-s <value>]
+    [--skip-themes-plugins] [--skip-url-update]
+
+ARGUMENTS
+  ACTION  (export|import|reset|snapshot) Database action to perform
+  TARGET  Target file for import/export or snapshot name
+
+FLAGS
+  -f, --force                   Force operation without confirmation prompts
+  -s, --site=<value>            Site path or site name to operate on
+      --exclude-tables=<value>  Comma-separated list of tables to exclude from export
+      --search-replace=<value>  Search and replace URLs during import (format: old.com,new.com)
+      --skip-themes-plugins     Skip themes and plugins tables during import
+      --skip-url-update         Skip automatic URL updates during import
+
+DESCRIPTION
+  Manage WordPress database operations
+
+EXAMPLES
+  $ wp-spin db export
+
+  $ wp-spin db export backup.sql
+
+  $ wp-spin db import backup.sql
+
+  $ wp-spin db import backup.sql --search-replace=oldsite.com,newsite.com
+
+  $ wp-spin db import backup.sql --skip-url-update
+
+  $ wp-spin db reset
+
+  $ wp-spin db snapshot create dev-state
+
+  $ wp-spin db snapshot restore dev-state
+
+  $ wp-spin db snapshot list
+```
+
+_See code: [src/commands/db.ts](https://github.com/DKapin/wp-spin/blob/v0.9.0/src/commands/db.ts)_
 
 ## `wp-spin logs`
 
