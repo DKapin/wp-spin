@@ -290,6 +290,7 @@ wp-spin includes several security enhancements:
 * [`wp-spin containers`](#wp-spin-containers)
 * [`wp-spin db ACTION [TARGET]`](#wp-spin-db-action-target)
 * [`wp-spin logs`](#wp-spin-logs)
+* [`wp-spin php [VERSION]`](#wp-spin-php-version)
 * [`wp-spin plugin`](#wp-spin-plugin)
 * [`wp-spin ps`](#wp-spin-ps)
 * [`wp-spin remove`](#wp-spin-remove)
@@ -406,6 +407,40 @@ EXAMPLES
 ```
 
 _See code: [src/commands/logs.ts](https://github.com/DKapin/wp-spin/blob/v0.10.0/src/commands/logs.ts)_
+
+## `wp-spin php [VERSION]`
+
+Manage PHP version for WordPress environment
+
+```
+USAGE
+  $ wp-spin php [VERSION] [-d <value>] [-s <value>] [-f] [-l]
+
+ARGUMENTS
+  VERSION  (7.2|7.3|7.4|8.0|8.1|8.2|8.3|8.4) PHP version to switch to
+
+FLAGS
+  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
+  -f, --force           Force PHP version change without confirmation
+  -l, --list            List all available PHP versions
+  -s, --site=<value>    Site path or site name
+
+DESCRIPTION
+  Manage PHP version for WordPress environment
+
+EXAMPLES
+  $ wp-spin php
+
+  $ wp-spin php 8.3
+
+  $ wp-spin php 8.2
+
+  $ wp-spin php 7.4
+
+  $ wp-spin php --list
+```
+
+_See code: [src/commands/php.ts](https://github.com/DKapin/wp-spin/blob/v0.10.0/src/commands/php.ts)_
 
 ## `wp-spin plugin`
 
