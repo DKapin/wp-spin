@@ -1,9 +1,6 @@
-import { Config, Flags } from '@oclif/core';
+import { Flags } from '@oclif/core';
 import { execa } from 'execa';
-import fs from 'fs-extra';
-import path from 'node:path';
 
-import { DockerService } from '../services/docker.js';
 import { BaseCommand } from './base.js';
 
 export default class Logs extends BaseCommand {
@@ -16,7 +13,7 @@ export default class Logs extends BaseCommand {
     '$ wp-spin logs --container=mysql --site=my-wp-site',
   ];
   static flags = {
-    ...BaseCommand.baseFlags,
+    ...BaseCommand.flags,
     container: Flags.string({
       char: 'c',
       default: 'wordpress',
@@ -24,36 +21,14 @@ export default class Logs extends BaseCommand {
       options: ['wordpress', 'mysql', 'phpmyadmin'],
     }),
   };
-  static hidden = false
-  protected docker: DockerService;
-
-  constructor(argv: string[], config: Config) {
-    super(argv, config);
-    this.docker = new DockerService(process.cwd());
-  }
-
-  protected async ensureProjectDirectory(): Promise<void> {
-    const requiredFiles = ['docker-compose.yml', '.env'];
-    const missingFiles = [];
-
-    for (const file of requiredFiles) {
-      if (!this.checkFileExists(file)) {
-        missingFiles.push(file);
-      }
-    }
-
-    if (missingFiles.length > 0) {
-      throw new Error(
-        'Not a WordPress project directory. Missing ' + missingFiles.join(', ') + '\n' +
-        'Make sure you are in the correct directory or run `wp-spin init` to create a new project.'
-      );
-    }
-  }
+  static hidden = false;
 
   public async run(): Promise<void> {
     const { flags } = await this.parse(Logs);
-    await this.ensureProjectDirectory();
+    
+    // Use BaseCommand's standard project validation and Docker service initialization
     await this.checkDockerEnvironment();
+    
     const containerType = flags.container || 'wordpress';
     const containerNames = this.getContainerNames();
     let containerName = containerNames.wordpress;
@@ -62,14 +37,5 @@ export default class Logs extends BaseCommand {
 
     // Show logs from the selected container
     await execa('docker', ['logs', containerName], { stdio: 'inherit' });
-  }
-
-  private checkFileExists(filePath: string): boolean {
-    try {
-      fs.accessSync(path.join(process.cwd(), filePath));
-      return true;
-    } catch {
-      return false;
-    }
   }
 }
