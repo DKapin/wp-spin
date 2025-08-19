@@ -142,31 +142,41 @@ http {
   private addHostsEntry(domain: string): void {
     try {
       const hostsEntry = `127.0.0.1 ${domain}`;
-      const hostsFile = '/etc/hosts';
+      const hostsFile = process.platform === 'win32' ? String.raw`C:\Windows\System32\drivers\etc\hosts` : '/etc/hosts';
       const hostsContent = fs.readFileSync(hostsFile, 'utf8');
       if (hostsContent.includes(hostsEntry)) {
         return;
       }
 
       try {
-        execSync(`echo "${hostsEntry}" | sudo tee -a ${hostsFile}`, { stdio: 'inherit' });
+        if (process.platform === 'win32') {
+          // On Windows, try to append directly (requires admin privileges)
+          fs.appendFileSync(hostsFile, `\n${hostsEntry}`);
+        } else {
+          execSync(`echo "${hostsEntry}" | sudo tee -a ${hostsFile}`, { stdio: 'inherit' });
+        }
       } catch {
-        throw new Error(
-          `Failed to update /etc/hosts. You may need to run the command with sudo or manually add this line to /etc/hosts:\n${hostsEntry}`
-        );
+        const instruction = process.platform === 'win32' 
+          ? `Failed to update hosts file. Please run as administrator or manually add this line to ${hostsFile}:\n${hostsEntry}`
+          : `Failed to update /etc/hosts. You may need to run the command with sudo or manually add this line to /etc/hosts:\n${hostsEntry}`;
+        throw new Error(instruction);
       }
     } catch (error) {
-      if (error instanceof Error && error.message.includes('sudo')) {
+      if (error instanceof Error && (error.message.includes('sudo') || error.message.includes('administrator'))) {
         throw error;
       }
 
-      throw new Error(`Failed to update /etc/hosts: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Failed to update hosts file: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   private ensureCertsDir(): void {
     if (!fs.existsSync(this.certsDir)) {
-      execSync(`sudo mkdir -p ${this.certsDir}`, { stdio: 'inherit' });
+      if (process.platform === 'win32') {
+        fs.mkdirSync(this.certsDir, { recursive: true });
+      } else {
+        execSync(`sudo mkdir -p ${this.certsDir}`, { stdio: 'inherit' });
+      }
     }
 
     // Set permissions
@@ -190,17 +200,29 @@ http {
 
   private ensureConfigDir(): void {
     if (!fs.existsSync(this.configDir)) {
-      execSync(`sudo mkdir -p ${this.configDir}`, { stdio: 'inherit' });
+      if (process.platform === 'win32') {
+        fs.mkdirSync(this.configDir, { recursive: true });
+      } else {
+        execSync(`sudo mkdir -p ${this.configDir}`, { stdio: 'inherit' });
+      }
     }
 
     const nginxConfPath = join(this.configDir, 'nginx.conf');
     if (!fs.existsSync(nginxConfPath)) {
-      execSync(`echo '${this.defaultConfig}' | sudo tee ${nginxConfPath}`, { stdio: 'inherit' });
+      if (process.platform === 'win32') {
+        fs.writeFileSync(nginxConfPath, this.defaultConfig);
+      } else {
+        execSync(`echo '${this.defaultConfig}' | sudo tee ${nginxConfPath}`, { stdio: 'inherit' });
+      }
     }
 
     const confDir = join(this.configDir, 'conf.d');
     if (!fs.existsSync(confDir)) {
-      execSync(`sudo mkdir -p ${confDir}`, { stdio: 'inherit' });
+      if (process.platform === 'win32') {
+        fs.mkdirSync(confDir, { recursive: true });
+      } else {
+        execSync(`sudo mkdir -p ${confDir}`, { stdio: 'inherit' });
+      }
     }
 
     // Set proper permissions based on OS
@@ -350,7 +372,7 @@ http {
   }
 
   private removeHostsEntry(domain: string): void {
-    const hostsFile = '/etc/hosts';
+    const hostsFile = process.platform === 'win32' ? String.raw`C:\Windows\System32\drivers\etc\hosts` : '/etc/hosts';
     const hostsEntry = `127.0.0.1 ${domain}`;
     const hostsContent = fs.readFileSync(hostsFile, 'utf8');
     const newContent = hostsContent
@@ -358,11 +380,16 @@ http {
       .filter(line => !line.includes(hostsEntry))
       .join('\n');
     try {
-      execSync(`echo "${newContent}" | sudo tee ${hostsFile}`, { stdio: 'inherit' });
+      if (process.platform === 'win32') {
+        fs.writeFileSync(hostsFile, newContent);
+      } else {
+        execSync(`echo "${newContent}" | sudo tee ${hostsFile}`, { stdio: 'inherit' });
+      }
     } catch {
-      throw new Error(
-        `Failed to update /etc/hosts. You may need to run the command with sudo or manually remove this line from /etc/hosts:\n${hostsEntry}`
-      );
+      const instruction = process.platform === 'win32'
+        ? `Failed to update hosts file. Please run as administrator or manually remove this line from ${hostsFile}:\n${hostsEntry}`
+        : `Failed to update /etc/hosts. You may need to run the command with sudo or manually remove this line from /etc/hosts:\n${hostsEntry}`;
+      throw new Error(instruction);
     }
   }
 
@@ -428,7 +455,11 @@ server {
     const existingConfig = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : '';
 
     if (existingConfig !== config) {
-      execSync(`echo '${config}' | sudo tee ${configPath}`, { stdio: 'inherit' });
+      if (process.platform === 'win32') {
+        fs.writeFileSync(configPath, config);
+      } else {
+        execSync(`echo '${config}' | sudo tee ${configPath}`, { stdio: 'inherit' });
+      }
     }
   }
 } 
