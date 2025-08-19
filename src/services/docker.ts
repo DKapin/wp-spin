@@ -527,8 +527,10 @@ export class DockerService implements IDockerService {
       // Create directory if it doesn't exist
       await fs.mkdir(wordpressPath, { recursive: true });
       
-      // Set directory permissions to 755 (rwxr-xr-x)
-      await fs.chmod(wordpressPath, 0o755);
+      // Set directory permissions to 755 (rwxr-xr-x) on Unix-like systems only
+      if (process.platform !== 'win32') {
+        await fs.chmod(wordpressPath, 0o755);
+      }
       
       // Create a test file to verify write permissions
       const testFile = join(wordpressPath, '.test');
