@@ -349,8 +349,6 @@ export default class Init extends BaseCommand {
     }
 
     const dockerCompose = `
-version: '3'
-
 services:
   wordpress:
     build: 
@@ -896,7 +894,7 @@ FLUSH PRIVILEGES;
 
       // Install WP-CLI properly for the container architecture
       execSync(
-        `docker exec ${containerName} sh -c 'curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && chmod +x wp-cli.phar && mv wp-cli.phar /usr/local/bin/wp && wp --info'`,
+        `docker exec ${containerName} sh -c "curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && chmod +x wp-cli.phar && mv wp-cli.phar /usr/local/bin/wp && wp --info"`,
         { stdio: 'inherit' }
       );
 
