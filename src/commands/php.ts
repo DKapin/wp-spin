@@ -336,7 +336,7 @@ static hidden = false;
     try {
       const containerName = this.getContainerNames().wordpress;
       const siteUrl = execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && wp option get siteurl --allow-root 2>/dev/null'`,
+        `docker exec ${containerName} sh -c "cd /var/www/html && wp option get siteurl --allow-root 2>/dev/null"`,
         { encoding: 'utf8' }
       ).trim();
       
@@ -499,7 +499,7 @@ static hidden = false;
     try {
       const containerName = this.getContainerNames().wordpress;
       const wpVersion = execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && wp core version --allow-root 2>/dev/null'`,
+        `docker exec ${containerName} sh -c "cd /var/www/html && wp core version --allow-root 2>/dev/null"`,
         { encoding: 'utf8' }
       ).trim();
       
