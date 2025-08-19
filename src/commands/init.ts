@@ -436,6 +436,7 @@ RUN echo "Building WordPress with Xdebug for platform: $TARGETPLATFORM"
 # Install system dependencies needed for Xdebug and WP-CLI
 RUN apt-get update && apt-get install -y \\
     curl \\
+    ca-certificates \\
     less \\
     unzip \\
     && rm -rf /var/lib/apt/lists/*
@@ -915,7 +916,19 @@ FLUSH PRIVILEGES;
 
       // Set final permissions (ignore errors)
       execSync(
-        `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html 2>/dev/null || true && find /var/www/html -type d -exec chmod 755 {} \\\\; 2>/dev/null || true && find /var/www/html -type f -exec chmod 644 {} \\\\; 2>/dev/null || true"`,
+        `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html 2>/dev/null || true"`,
+        { stdio: 'inherit' }
+      );
+      
+      // Set directory permissions
+      execSync(
+        `docker exec ${containerName} sh -c "find /var/www/html -type d -exec chmod 755 {} + 2>/dev/null || true"`,
+        { stdio: 'inherit' }
+      );
+      
+      // Set file permissions
+      execSync(
+        `docker exec ${containerName} sh -c "find /var/www/html -type f -exec chmod 644 {} + 2>/dev/null || true"`,
         { stdio: 'inherit' }
       );
 
@@ -1010,10 +1023,19 @@ upload_max_filesize = 64M`;
       );
 
       // Ensure WordPress core files are present with increased memory limit
-      execSync(
-        `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core download --force --allow-root"`,
-        { stdio: 'inherit' }
-      );
+      try {
+        execSync(
+          `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core download --force --allow-root"`,
+          { stdio: 'inherit' }
+        );
+      } catch {
+        // Fallback: try downloading with --insecure flag for SSL issues
+        console.log('WordPress download failed, trying with insecure SSL...');
+        execSync(
+          `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core download --force --allow-root --insecure"`,
+          { stdio: 'inherit' }
+        );
+      }
 
       // Install WordPress using WP-CLI with the correct URL
       const installUrl = flags.domain 
@@ -1159,7 +1181,19 @@ require_once ABSPATH . 'wp-settings.php';`;
 
       // Final permissions fix
       execSync(
-        `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html && find /var/www/html -type d -exec chmod 755 {} \\\\; && find /var/www/html -type f -exec chmod 644 {} \\\\;"`,
+        `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html"`,
+        { stdio: 'inherit' }
+      );
+      
+      // Set directory permissions
+      execSync(
+        `docker exec ${containerName} sh -c "find /var/www/html -type d -exec chmod 755 {} +"`,
+        { stdio: 'inherit' }
+      );
+      
+      // Set file permissions  
+      execSync(
+        `docker exec ${containerName} sh -c "find /var/www/html -type f -exec chmod 644 {} +"`,
         { stdio: 'inherit' }
       );
     } catch (error) {
