@@ -310,12 +310,12 @@ static description = 'Manage WordPress database operations';
     try {
       // Get basic site info
       const siteUrl = execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && wp option get siteurl --allow-root'`,
+        `docker exec ${containerName} sh -c "cd /var/www/html && wp option get siteurl --allow-root"`,
         { encoding: 'utf8' }
       ).trim();
       
       const siteTitle = execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && wp option get blogname --allow-root'`,
+        `docker exec ${containerName} sh -c "cd /var/www/html && wp option get blogname --allow-root"`,
         { encoding: 'utf8' }
       ).trim();
       
@@ -325,7 +325,7 @@ static description = 'Manage WordPress database operations';
       
       try {
         const multisiteCheck = execSync(
-          `docker exec ${containerName} sh -c 'cd /var/www/html && wp config get MULTISITE --allow-root 2>/dev/null'`,
+          `docker exec ${containerName} sh -c "cd /var/www/html && wp config get MULTISITE --allow-root 2>/dev/null"`,
           { encoding: 'utf8' }
         ).trim();
         
@@ -333,7 +333,7 @@ static description = 'Manage WordPress database operations';
         
         if (isMultisite) {
           const subdomainInstall = execSync(
-            `docker exec ${containerName} sh -c 'cd /var/www/html && wp config get SUBDOMAIN_INSTALL --allow-root 2>/dev/null'`,
+            `docker exec ${containerName} sh -c "cd /var/www/html && wp config get SUBDOMAIN_INSTALL --allow-root 2>/dev/null"`,
             { encoding: 'utf8' }
           ).trim();
           
@@ -580,11 +580,11 @@ static description = 'Manage WordPress database operations';
     spinner.text = 'Clearing WordPress caches...';
     try {
       execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && wp rewrite flush --allow-root'`,
+        `docker exec ${containerName} sh -c "cd /var/www/html && wp rewrite flush --allow-root"`,
         { stdio: 'pipe' }
       );
       execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && wp cache flush --allow-root'`,
+        `docker exec ${containerName} sh -c "cd /var/www/html && wp cache flush --allow-root"`,
         { stdio: 'pipe' }
       );
     } catch {
@@ -630,7 +630,7 @@ static description = 'Manage WordPress database operations';
       // Drop all tables
       spinner.text = 'Dropping existing database tables...';
       execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && wp db reset --yes --allow-root'`,
+        `docker exec ${containerName} sh -c "cd /var/www/html && wp db reset --yes --allow-root"`,
         { stdio: 'pipe' }
       );
       

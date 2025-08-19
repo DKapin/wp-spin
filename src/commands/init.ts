@@ -900,7 +900,7 @@ FLUSH PRIVILEGES;
 
       // Set permissions on existing directories (ignore errors if they don't exist)
       execSync(
-        `docker exec ${containerName} sh -c 'chown -R www-data:www-data /var/www/html 2>/dev/null || true'`,
+        `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html 2>/dev/null || true"`,
         { stdio: 'inherit' }
       );
 
@@ -908,14 +908,14 @@ FLUSH PRIVILEGES;
       const subdirs = ['themes', 'plugins', 'uploads', 'upgrade'];
       for (const dir of subdirs) {
         execSync(
-          `docker exec ${containerName} sh -c 'mkdir -p /var/www/html/wp-content/${dir} 2>/dev/null || true && chown www-data:www-data /var/www/html/wp-content/${dir} 2>/dev/null || true'`,
+          `docker exec ${containerName} sh -c "mkdir -p /var/www/html/wp-content/${dir} 2>/dev/null || true && chown www-data:www-data /var/www/html/wp-content/${dir} 2>/dev/null || true"`,
           { stdio: 'inherit' }
         );
       }
 
       // Set final permissions (ignore errors)
       execSync(
-        `docker exec ${containerName} sh -c 'chown -R www-data:www-data /var/www/html 2>/dev/null || true && find /var/www/html -type d -exec chmod 755 {} \\; 2>/dev/null || true && find /var/www/html -type f -exec chmod 644 {} \\; 2>/dev/null || true'`,
+        `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html 2>/dev/null || true && find /var/www/html -type d -exec chmod 755 {} \\\\; 2>/dev/null || true && find /var/www/html -type f -exec chmod 644 {} \\\\; 2>/dev/null || true"`,
         { stdio: 'inherit' }
       );
 
@@ -1005,13 +1005,13 @@ upload_max_filesize = 64M`;
 
       // Restart PHP-FPM to apply new settings
       execSync(
-        `docker exec ${containerName} sh -c 'kill -USR2 1'`,
+        `docker exec ${containerName} sh -c "kill -USR2 1"`,
         { stdio: 'inherit' }
       );
 
       // Ensure WordPress core files are present with increased memory limit
       execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core download --force --allow-root'`,
+        `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core download --force --allow-root"`,
         { stdio: 'inherit' }
       );
 
@@ -1021,7 +1021,7 @@ upload_max_filesize = 64M`;
         : `http://localhost:${flags.port}`;
       
       execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core install --url="${installUrl}" --title="${siteName}" --admin_user=admin --admin_password=password --admin_email=admin@example.com --allow-root 2>&1 | grep -v "sendmail: not found"'`,
+        `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core install --url='${installUrl}' --title='${siteName}' --admin_user=admin --admin_password=password --admin_email=admin@example.com --allow-root 2>&1 | grep -v 'sendmail: not found'"`,
         { stdio: 'inherit' }
       );
 
@@ -1029,11 +1029,11 @@ upload_max_filesize = 64M`;
       if (flags.domain === undefined) {
         // Only update URLs to localhost if no custom domain is specified
         execSync(
-          `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update home "http://localhost:${flags.port}" --allow-root'`,
+          `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update home 'http://localhost:${flags.port}' --allow-root"`,
           { stdio: 'inherit' }
         );
         execSync(
-          `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update siteurl "http://localhost:${flags.port}" --allow-root'`,
+          `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update siteurl 'http://localhost:${flags.port}' --allow-root"`,
           { stdio: 'inherit' }
         );
       } else {
@@ -1098,8 +1098,8 @@ upload_max_filesize = 64M`;
         try {
           // Convert to multisite using WP-CLI
           const multisiteCommand = flags['multisite-type'] === 'subdomain' 
-            ? `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core multisite-convert --title="${networkTitle}" --subdomains --allow-root'`
-            : `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core multisite-convert --title="${networkTitle}" --allow-root'`;
+            ? `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core multisite-convert --title='${networkTitle}' --subdomains --allow-root"`
+            : `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core multisite-convert --title='${networkTitle}' --allow-root"`;
           
           execSync(multisiteCommand, { stdio: 'inherit' });
           
@@ -1159,7 +1159,7 @@ require_once ABSPATH . 'wp-settings.php';`;
 
       // Final permissions fix
       execSync(
-        `docker exec ${containerName} sh -c 'chown -R www-data:www-data /var/www/html && find /var/www/html -type d -exec chmod 755 {} \\; && find /var/www/html -type f -exec chmod 644 {} \\;'`,
+        `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html && find /var/www/html -type d -exec chmod 755 {} \\\\; && find /var/www/html -type f -exec chmod 644 {} \\\\;"`,
         { stdio: 'inherit' }
       );
     } catch (error) {
