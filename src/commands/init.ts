@@ -560,10 +560,12 @@ FLUSH PRIVILEGES;
     // This reference will be used in createDockerComposeFile
     this.mysqlInitScriptPath = join(mysqlDir, 'init.sql');
     
-    // Set strict permissions on sensitive files
-    await fs.chmod(join(projectPath, '.env'), 0o600);
-    await fs.chmod(join(projectPath, '.credentials.json'), 0o600);
-    await fs.chmod(join(mysqlDir, 'init.sql'), 0o600);
+    // Set strict permissions on sensitive files (Unix-like systems only)
+    if (process.platform !== 'win32') {
+      await fs.chmod(join(projectPath, '.env'), 0o600);
+      await fs.chmod(join(projectPath, '.credentials.json'), 0o600);
+      await fs.chmod(join(mysqlDir, 'init.sql'), 0o600);
+    }
   }
   
   /**
@@ -1282,7 +1284,10 @@ require_once ABSPATH . 'wp-settings.php';`;
     spinner.start('Creating project directory...');
     fs.mkdirSync(projectPath, { recursive: true });
     // Set proper permissions (755 for directories)
-    fs.chmodSync(projectPath, 0o755);
+    if (process.platform !== 'win32') {
+      fs.chmodSync(projectPath, 0o755);
+    }
+
     this.projectPath = projectPath; // Set the project path here
 
     // Create a .wp-spin file as a marker for project root
@@ -1416,8 +1421,11 @@ desktop.ini
       
       fs.mkdirSync(projectPath, { recursive: true });
       // Set proper permissions (755 for directories)
+      if (process.platform !== 'win32') {
       fs.chmodSync(projectPath, 0o755);
-      this.projectPath = projectPath; // Set the project path here
+    }
+
+    this.projectPath = projectPath; // Set the project path here
 
       // Create Dockerfile first (required by docker-compose.yml)
       await this.createDockerfile(projectPath);
@@ -1618,10 +1626,13 @@ desktop.ini
       // Try to recover by fixing common issues
       spinner.info('Attempting to fix WordPress configuration...');
       
-      // Make sure important files are writable by WordPress container
-      await execa('chmod', ['-R', '777', join(wordpressPath, 'wp-content')], {
-        cwd: projectPath,
-      });
+      // Make sure important files are writable by WordPress container (Unix-like systems only)
+      if (process.platform !== 'win32') {
+        await execa('chmod', ['-R', '777', join(wordpressPath, 'wp-content')], {
+          cwd: projectPath,
+        });
+      }
+
       spinner.succeed('Fixed WordPress permissions');
       
       // Try starting again
@@ -1719,7 +1730,9 @@ desktop.ini
   private async verifyWordPressSetup(wordpressPath: string): Promise<void> {
     // Check permissions on wp-content directory
     try {
-      await fs.chmod(join(wordpressPath, 'wp-content'), 0o777);
+      if (process.platform !== 'win32') {
+        await fs.chmod(join(wordpressPath, 'wp-content'), 0o777);
+      }
       
       // Make sure important directories exist and are writable
       const contentDirs = [
@@ -1733,7 +1746,9 @@ desktop.ini
       await Promise.all(contentDirs.map(async (dir) => {
         const dirPath = join(wordpressPath, 'wp-content', dir);
         await fs.ensureDir(dirPath);
-        await fs.chmod(dirPath, 0o777);
+        if (process.platform !== 'win32') {
+          await fs.chmod(dirPath, 0o777);
+        }
       }));
       
       // Create an .htaccess file if it doesn't exist
