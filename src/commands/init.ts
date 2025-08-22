@@ -1078,10 +1078,19 @@ upload_max_filesize = 64M`;
         console.log('Configuring WordPress to use MailHog for local email testing...');
         
         // Install and configure wp-mail-smtp plugin for MailHog
-        execSync(
-          `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp plugin install wp-mail-smtp --activate --allow-root"`,
-          { stdio: 'inherit' }
-        );
+        try {
+          execSync(
+            `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp plugin install wp-mail-smtp --activate --allow-root"`,
+            { stdio: 'inherit' }
+          );
+        } catch {
+          // Fallback: download plugin directly with curl to bypass SSL issues
+          console.log('Plugin download failed, trying direct download...');
+          execSync(
+            `docker exec ${containerName} sh -c "cd /var/www/html && curl -k -L -o wp-mail-smtp.zip https://downloads.wordpress.org/plugin/wp-mail-smtp.zip && unzip wp-mail-smtp.zip -d wp-content/plugins/ && rm wp-mail-smtp.zip && php -d memory_limit=512M /usr/local/bin/wp plugin activate wp-mail-smtp --allow-root"`,
+            { stdio: 'inherit' }
+          );
+        }
 
         // Configure wp-mail-smtp plugin for MailHog
         const mailhogSmtpPort = 1025; // Internal Docker port for SMTP
