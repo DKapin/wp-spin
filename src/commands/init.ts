@@ -1069,7 +1069,7 @@ upload_max_filesize = 64M`;
 
       // Install and activate a default theme
       execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp theme install twentytwentyfour --activate --allow-root'`,
+        `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp theme install twentytwentyfour --activate --allow-root"`,
         { stdio: 'inherit' }
       );
 
@@ -1079,7 +1079,7 @@ upload_max_filesize = 64M`;
         
         // Install and configure wp-mail-smtp plugin for MailHog
         execSync(
-          `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp plugin install wp-mail-smtp --activate --allow-root'`,
+          `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp plugin install wp-mail-smtp --activate --allow-root"`,
           { stdio: 'inherit' }
         );
 
@@ -1105,9 +1105,9 @@ upload_max_filesize = 64M`;
         };
         /* eslint-enable camelcase */
         
-        const configJson = JSON.stringify(wpMailSmtpConfig);
+        const configJson = JSON.stringify(wpMailSmtpConfig).replaceAll('"', String.raw`\"`);
         execSync(
-          `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update wp_mail_smtp ${JSON.stringify(configJson)} --format=json --allow-root'`,
+          `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update wp_mail_smtp '${configJson}' --format=json --allow-root"`,
           { stdio: 'inherit' }
         );
 
@@ -1178,7 +1178,7 @@ require_once ABSPATH . 'wp-settings.php';`;
 
       // Clear WordPress cache
       execSync(
-        `docker exec ${containerName} sh -c 'cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp cache flush --allow-root'`,
+        `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp cache flush --allow-root"`,
         { stdio: 'inherit' }
       );
 
