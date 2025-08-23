@@ -1,3 +1,4 @@
+import { confirm } from '@inquirer/prompts';
 import { execa } from 'execa';
 import { execSync } from 'node:child_process';
 import * as fs from 'node:fs';
@@ -75,8 +76,22 @@ http {
     const hostCertPath = join(this.certsDir, `${domain}.pem`);
     const hostKeyPath = join(this.certsDir, `${domain}-key.pem`);
     if (!fs.existsSync(hostCertPath) || !fs.existsSync(hostKeyPath)) {
-      // Run mkcert to generate cert and key in the host certs dir
-      await execa('mkcert', ['-cert-file', hostCertPath, '-key-file', hostKeyPath, domain], { stdio: 'inherit' });
+      try {
+        // Run mkcert to generate cert and key in the host certs dir
+        await execa('mkcert', ['-cert-file', hostCertPath, '-key-file', hostKeyPath, domain], { stdio: 'inherit' });
+      } catch {
+        // mkcert not available - offer to install it automatically
+        console.log('\n⚠️  mkcert is required to generate SSL certificates but is not installed.');
+        
+        const shouldInstall = await this.promptInstallMkcert();
+        if (shouldInstall) {
+          await this.installMkcert();
+          // Retry certificate generation after installation
+          await execa('mkcert', ['-cert-file', hostCertPath, '-key-file', hostKeyPath, domain], { stdio: 'inherit' });
+        } else {
+          throw new Error('SSL certificate generation cancelled. Run the init command without the --ssl flag to continue without SSL.');
+        }
+      }
     }
 
     // Return container paths for nginx config
@@ -459,6 +474,94 @@ server {
         fs.writeFileSync(configPath, config);
       } else {
         execSync(`echo '${config}' | sudo tee ${configPath}`, { stdio: 'inherit' });
+      }
+    }
+  }
+
+  private async promptInstallMkcert(): Promise<boolean> {
+    const message = 'Would you like wp-spin to install mkcert automatically?';
+    return confirm({ default: true, message });
+  }
+
+  private async installMkcert(): Promise<void> {
+    console.log('Installing mkcert...');
+    
+    try {
+      switch (process.platform) {
+        case 'darwin': {
+          await this.installMkcertMacOS();
+          break;
+        }
+
+        case 'linux': {
+          await this.installMkcertLinux();
+          break;
+        }
+
+        case 'win32': {
+          await this.installMkcertWindows();
+          break;
+        }
+
+        default: {
+          throw new Error(`Automatic installation not supported for ${process.platform}. Please install manually from https://github.com/FiloSottile/mkcert#installation`);
+        }
+      }
+      
+      // Install the local CA
+      console.log('Setting up local certificate authority...');
+      await execa('mkcert', ['-install'], { stdio: 'inherit' });
+      console.log('✓ mkcert installed and configured successfully!');
+      
+    } catch (error) {
+      throw new Error(`Failed to install mkcert: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async installMkcertMacOS(): Promise<void> {
+    try {
+      // Try Homebrew first
+      await execa('brew', ['install', 'mkcert'], { stdio: 'inherit' });
+    } catch {
+      // If Homebrew fails, try MacPorts
+      try {
+        await execa('sudo', ['port', 'install', 'mkcert'], { stdio: 'inherit' });
+      } catch {
+        throw new Error('Failed to install mkcert. Please install Homebrew or MacPorts first, or install mkcert manually.');
+      }
+    }
+  }
+
+  private async installMkcertLinux(): Promise<void> {
+    try {
+      // Try apt (Ubuntu/Debian) first
+      await execa('sudo', ['apt', 'update'], { stdio: 'pipe' });
+      await execa('sudo', ['apt', 'install', '-y', 'libnss3-tools'], { stdio: 'inherit' });
+      
+      // Download and install mkcert binary
+      const arch = process.arch === 'x64' ? 'amd64' : process.arch;
+      const url = `https://github.com/FiloSottile/mkcert/releases/latest/download/mkcert-v1.4.4-linux-${arch}`;
+      
+      await execa('wget', ['-O', '/tmp/mkcert', url], { stdio: 'inherit' });
+      await execa('chmod', ['+x', '/tmp/mkcert'], { stdio: 'inherit' });
+      await execa('sudo', ['mv', '/tmp/mkcert', '/usr/local/bin/mkcert'], { stdio: 'inherit' });
+      
+    } catch {
+      throw new Error('Failed to install mkcert on Linux. Please install manually or use your distribution\'s package manager.');
+    }
+  }
+
+  private async installMkcertWindows(): Promise<void> {
+    try {
+      // Try Chocolatey first
+      await execa('choco', ['install', 'mkcert', '-y'], { stdio: 'inherit' });
+    } catch {
+      // If Chocolatey fails, try Scoop
+      try {
+        await execa('scoop', ['bucket', 'add', 'extras'], { stdio: 'pipe' });
+        await execa('scoop', ['install', 'mkcert'], { stdio: 'inherit' });
+      } catch {
+        throw new Error('Failed to install mkcert. Please install Chocolatey or Scoop first, or download mkcert manually from https://github.com/FiloSottile/mkcert/releases');
       }
     }
   }
