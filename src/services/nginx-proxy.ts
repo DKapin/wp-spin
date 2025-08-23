@@ -165,16 +165,19 @@ http {
 
       try {
         if (process.platform === 'win32') {
-          // On Windows, try to append directly (requires admin privileges)
-          fs.appendFileSync(hostsFile, `\n${hostsEntry}`);
+          // On Windows, try multiple approaches
+          this.addWindowsHostsEntry(hostsFile, hostsEntry);
         } else {
           execSync(`echo "${hostsEntry}" | sudo tee -a ${hostsFile}`, { stdio: 'inherit' });
         }
       } catch {
+        // Provide helpful instructions but don't block the setup
         const instruction = process.platform === 'win32' 
-          ? `Failed to update hosts file. Please run as administrator or manually add this line to ${hostsFile}:\n${hostsEntry}`
+          ? this.getWindowsHostsInstructions(hostsEntry, hostsFile)
           : `Failed to update /etc/hosts. You may need to run the command with sudo or manually add this line to /etc/hosts:\n${hostsEntry}`;
-        throw new Error(instruction);
+        
+        console.warn('\n⚠️  ' + instruction);
+        console.warn('\n💡 Your WordPress site will still work, but you\'ll need to use localhost or the IP address instead of the custom domain.');
       }
     } catch (error) {
       if (error instanceof Error && (error.message.includes('sudo') || error.message.includes('administrator'))) {
@@ -182,6 +185,26 @@ http {
       }
 
       throw new Error(`Failed to update hosts file: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private addWindowsHostsEntry(hostsFile: string, hostsEntry: string): void {
+    try {
+      // Try direct file append first
+      fs.appendFileSync(hostsFile, `\n${hostsEntry}`);
+    } catch {
+      // Try using PowerShell with elevated privileges
+      try {
+        const powershellCommand = `powershell -Command "Add-Content -Path '${hostsFile}' -Value '${hostsEntry}'"`;
+        execSync(powershellCommand, { stdio: 'pipe' });
+      } catch {
+        // Try using echo command
+        try {
+          execSync(`echo ${hostsEntry} >> "${hostsFile}"`, { stdio: 'pipe' });
+        } catch {
+          throw new Error('All Windows hosts file update methods failed');
+        }
+      }
     }
   }
 
@@ -364,6 +387,25 @@ http {
     } catch {
       return {};
     }
+  }
+
+  private getWindowsHostsInstructions(hostsEntry: string, hostsFile: string): string {
+    return `Failed to update hosts file automatically. Please choose one of these options:
+
+Option 1 - Run as Administrator:
+  • Close this terminal
+  • Right-click on Command Prompt or PowerShell and select "Run as administrator"
+  • Run your wp-spin command again
+
+Option 2 - Manual hosts file update:
+  • Open Notepad as administrator (Right-click Notepad → "Run as administrator")
+  • Open file: ${hostsFile}
+  • Add this line at the end: ${hostsEntry}
+  • Save the file
+
+Option 3 - Use PowerShell as administrator:
+  • Open PowerShell as administrator
+  • Run: Add-Content -Path "${hostsFile}" -Value "${hostsEntry}"`;
   }
 
   private async installMkcert(): Promise<void> {
