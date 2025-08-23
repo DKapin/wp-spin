@@ -444,9 +444,46 @@ http {
         await execa('scoop', ['bucket', 'add', 'extras'], { stdio: 'pipe' });
         await execa('scoop', ['install', 'mkcert'], { stdio: 'inherit' });
       } catch {
-        throw new Error('Failed to install mkcert. Please install Chocolatey or Scoop first, or download mkcert manually from https://github.com/FiloSottile/mkcert/releases');
+        // If both package managers fail, download and install manually
+        try {
+          await this.installMkcertWindowsManual();
+        } catch {
+          throw new Error('Failed to install mkcert. Please install Chocolatey or Scoop first, or download mkcert manually from https://github.com/FiloSottile/mkcert/releases');
+        }
       }
     }
+  }
+
+  private async installMkcertWindowsManual(): Promise<void> {
+    console.log('Package managers not found, downloading mkcert directly...');
+    
+    // Determine architecture
+    const arch = process.arch === 'x64' ? 'amd64' : process.arch === 'ia32' ? '386' : 'amd64';
+    const url = `https://github.com/FiloSottile/mkcert/releases/latest/download/mkcert-v1.4.4-windows-${arch}.exe`;
+    
+    // Create a local bin directory if it doesn't exist
+    const localBinDir = join(os.homedir(), 'AppData', 'Local', 'wp-spin', 'bin');
+    if (!fs.existsSync(localBinDir)) {
+      fs.mkdirSync(localBinDir, { recursive: true });
+    }
+    
+    const mkcertPath = join(localBinDir, 'mkcert.exe');
+    
+    // Download mkcert using PowerShell
+    console.log('Downloading mkcert...');
+    const downloadCommand = `powershell -Command "Invoke-WebRequest -Uri '${url}' -OutFile '${mkcertPath}'"`;
+    execSync(downloadCommand, { stdio: 'inherit' });
+    
+    // Add to PATH for current session by creating a batch script wrapper
+    const batchWrapperPath = join(localBinDir, 'mkcert.bat');
+    const batchContent = `@echo off\n"${mkcertPath}" %*`;
+    fs.writeFileSync(batchWrapperPath, batchContent);
+    
+    // Add to PATH environment variable for current process
+    process.env.PATH = `${localBinDir};${process.env.PATH}`;
+    
+    console.log(`✓ mkcert downloaded to ${mkcertPath}`);
+    console.log(`✓ Added to PATH for current session`);
   }
 
   private async isPortInUse(port: number): Promise<boolean> {
