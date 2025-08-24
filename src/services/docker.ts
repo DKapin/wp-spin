@@ -16,6 +16,7 @@ import { IDockerService } from './docker-interface.js';
 export class DockerService implements IDockerService {
   private architecture = arch();
   private command?: Command;
+  private dockerComposeCommand: string[] = ['docker-compose'];
   private platform = platform();
   private portMappings: Record<number, number> = {};
   private projectPath: string;
@@ -25,6 +26,25 @@ export class DockerService implements IDockerService {
     this.projectPath = projectPath;
     if (command) {
       this.command = command;
+    }
+  }
+
+  private async detectDockerComposeCommand(): Promise<void> {
+    // Try docker compose (new plugin) first
+    try {
+      await execa('docker', ['compose', '--version'], { stdio: 'ignore' });
+      this.dockerComposeCommand = ['docker', 'compose'];
+      return;
+    } catch {
+      // Fall back to docker-compose (legacy)
+      try {
+        await execa('docker-compose', ['--version'], { stdio: 'ignore' });
+        this.dockerComposeCommand = ['docker-compose'];
+        return;
+      } catch {
+        // Neither available
+        throw new Error('Neither docker compose nor docker-compose is available');
+      }
     }
   }
 
@@ -58,14 +78,15 @@ export class DockerService implements IDockerService {
   async checkDockerComposeInstalled(): Promise<void> {
     this.spinner.start('Checking Docker Compose installation...');
     try {
-      await execa('docker-compose', ['--version'], { stdio: 'ignore' });
-      this.spinner.succeed('Docker Compose is installed');
+      await this.detectDockerComposeCommand();
+      const commandName = this.dockerComposeCommand.join(' ');
+      this.spinner.succeed(`Docker Compose is installed (using ${commandName})`);
     } catch {
       this.spinner.fail('Docker Compose is not installed');
       this.prettyError(
         'Docker Compose Not Found',
         'Docker Compose is not installed on your system.',
-        'Please install Docker Compose from https://docs.docker.com/compose/install/'
+        'Please install Docker Compose from https://docs.docker.com/compose/install/ or enable Docker Compose plugin in Docker Desktop.'
       );
     }
   }
@@ -200,8 +221,13 @@ export class DockerService implements IDockerService {
    */
   async getLogs(): Promise<string> {
     try {
+      // Ensure we have detected the Docker Compose command
+      if (this.dockerComposeCommand[0] === 'docker-compose') {
+        await this.detectDockerComposeCommand();
+      }
+      
       // Get logs without following (-f) to get just the current logs
-      const { stdout } = await execa('docker-compose', ['logs'], {
+      const { stdout } = await execa(this.dockerComposeCommand[0], [...this.dockerComposeCommand.slice(1), 'logs'], {
         cwd: this.projectPath,
         stdio: 'pipe',
       });
@@ -215,7 +241,13 @@ export class DockerService implements IDockerService {
 
   async getPort(service: string): Promise<number> {
     try {
-      const result = execSync(`docker-compose port ${service} 80`, { cwd: this.projectPath }).toString();
+      // Ensure we have detected the Docker Compose command
+      if (this.dockerComposeCommand[0] === 'docker-compose') {
+        await this.detectDockerComposeCommand();
+      }
+      
+      const command = `${this.dockerComposeCommand.join(' ')} port ${service} 80`;
+      const result = execSync(command, { cwd: this.projectPath }).toString();
       const port = Number.parseInt(result.split(':')[1], 10);
       return port;
     } catch (error) {
@@ -880,7 +912,12 @@ export class DockerService implements IDockerService {
 
   private async runDockerCompose(args: string[]): Promise<void> {
     try {
-      await execa('docker-compose', args, {
+      // Ensure we have detected the Docker Compose command
+      if (this.dockerComposeCommand[0] === 'docker-compose') {
+        await this.detectDockerComposeCommand();
+      }
+      
+      await execa(this.dockerComposeCommand[0], [...this.dockerComposeCommand.slice(1), ...args], {
         cwd: this.projectPath,
         stdio: 'inherit',
       });
@@ -890,7 +927,7 @@ export class DockerService implements IDockerService {
           this.prettyError(
             'Docker Compose Not Found',
             'Docker Compose is not installed on your system.',
-            'Please install Docker Compose from https://docs.docker.com/compose/install/'
+            'Please install Docker Compose from https://docs.docker.com/compose/install/ or enable Docker Compose plugin in Docker Desktop.'
           );
         }
 
@@ -1005,11 +1042,16 @@ export class DockerService implements IDockerService {
     let attempts = 0;
     const maxAttempts = 30;
     
+    // Ensure we have detected the Docker Compose command
+    if (this.dockerComposeCommand[0] === 'docker-compose') {
+      await this.detectDockerComposeCommand();
+    }
+    
     // Use a loop with explicit eslint disable for waiting
     while (attempts < maxAttempts) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        await execa('docker-compose', ['exec', '-T', 'mysql', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-proot'], {
+        await execa(this.dockerComposeCommand[0], [...this.dockerComposeCommand.slice(1), 'exec', '-T', 'mysql', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-proot'], {
           cwd: this.projectPath,
           stdio: 'ignore',
         });
