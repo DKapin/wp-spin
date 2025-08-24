@@ -29,25 +29,6 @@ export class DockerService implements IDockerService {
     }
   }
 
-  private async detectDockerComposeCommand(): Promise<void> {
-    // Try docker compose (new plugin) first
-    try {
-      await execa('docker', ['compose', '--version'], { stdio: 'ignore' });
-      this.dockerComposeCommand = ['docker', 'compose'];
-      return;
-    } catch {
-      // Fall back to docker-compose (legacy)
-      try {
-        await execa('docker-compose', ['--version'], { stdio: 'ignore' });
-        this.dockerComposeCommand = ['docker-compose'];
-        return;
-      } catch {
-        // Neither available
-        throw new Error('Neither docker compose nor docker-compose is available');
-      }
-    }
-  }
-
   async checkDiskSpace(): Promise<void> {
     this.spinner.start('Checking disk space...');
     try {
@@ -531,6 +512,23 @@ export class DockerService implements IDockerService {
           'Less than 1GB of disk space available.',
           'Please free up some disk space and try again.'
         );
+      }
+    }
+  }
+
+  private async detectDockerComposeCommand(): Promise<void> {
+    // Try docker compose (new plugin) first
+    try {
+      await execa('docker', ['compose', '--version'], { stdio: 'ignore' });
+      this.dockerComposeCommand = ['docker', 'compose'];
+    } catch {
+      // Fall back to docker-compose (legacy)
+      try {
+        await execa('docker-compose', ['--version'], { stdio: 'ignore' });
+        this.dockerComposeCommand = ['docker-compose'];
+      } catch {
+        // Neither available
+        throw new Error('Neither docker compose nor docker-compose is available');
       }
     }
   }

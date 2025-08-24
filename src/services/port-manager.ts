@@ -91,6 +91,41 @@ export class PortManagerService {
     }
   }
 
+  private ensureConfigDir(dir: string): void {
+    if (process.platform === 'win32') {
+      fs.mkdirSync(dir, { recursive: true });
+    } else {
+      execSync(`sudo mkdir -p "${dir}"`, { stdio: 'inherit' });
+
+      // Set proper permissions
+      const username = process.env.USER || process.env.USERNAME || 'root';
+      let group: string;
+
+      switch (process.platform) {
+        case 'darwin': {
+          group = 'staff';
+          break;
+        }
+
+        case 'linux': {
+          try {
+            group = execSync(`id -gn ${username}`, { encoding: 'utf8' }).trim();
+          } catch {
+            group = username;
+          }
+
+          break;
+        }
+
+        default: {
+          group = username;
+        }
+      }
+
+      execSync(`sudo chown -R ${username}:${group} "${dir}"`, { stdio: 'inherit' });
+    }
+  }
+
   private getUsedPorts(): Set<number> {
     return new Set(Object.values(this.portMapping).map(mapping => mapping.port));
   }
@@ -134,35 +169,6 @@ export class PortManagerService {
       fs.writeFileSync(this.configPath, JSON.stringify(this.portMapping, null, 2));
     } catch (error) {
       console.warn('Failed to save port mapping:', error);
-    }
-  }
-
-  private ensureConfigDir(dir: string): void {
-    if (process.platform === 'win32') {
-      fs.mkdirSync(dir, { recursive: true });
-    } else {
-      execSync(`sudo mkdir -p "${dir}"`, { stdio: 'inherit' });
-      // Set proper permissions
-      const username = process.env.USER || process.env.USERNAME || 'root';
-      let group: string;
-      switch (process.platform) {
-        case 'darwin': {
-          group = 'staff';
-          break;
-        }
-        case 'linux': {
-          try {
-            group = execSync(`id -gn ${username}`, { encoding: 'utf8' }).trim();
-          } catch {
-            group = username;
-          }
-          break;
-        }
-        default: {
-          group = username;
-        }
-      }
-      execSync(`sudo chown -R ${username}:${group} "${dir}"`, { stdio: 'inherit' });
     }
   }
 } 
