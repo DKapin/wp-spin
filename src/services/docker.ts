@@ -62,13 +62,28 @@ export class DockerService implements IDockerService {
       await this.detectDockerComposeCommand();
       const commandName = this.dockerComposeCommand.join(' ');
       this.spinner.succeed(`Docker Compose is installed (using ${commandName})`);
-    } catch {
+    } catch (error) {
       this.spinner.fail('Docker Compose is not installed');
-      this.prettyError(
-        'Docker Compose Not Found',
-        'Docker Compose is not installed on your system.',
-        'Please install Docker Compose from https://docs.docker.com/compose/install/ or enable Docker Compose plugin in Docker Desktop.'
-      );
+      
+      // Provide more specific error messages based on the error
+      let message = 'Docker Compose is not installed on your system.';
+      let suggestion = 'Please install Docker Compose from https://docs.docker.com/compose/install/ or enable Docker Compose plugin in Docker Desktop.';
+      
+      if (error instanceof Error && error.message.includes('Neither docker compose nor docker-compose is available')) {
+        if (process.platform === 'linux' && process.env.WSL_DISTRO_NAME) {
+          // WSL-specific guidance
+          message = 'Docker Compose is not available in this WSL environment.';
+          suggestion = 'Please install Docker Desktop and enable WSL integration from Docker Desktop settings, or install Docker directly in WSL.';
+        } else if (process.platform === 'darwin') {
+          // macOS-specific guidance
+          suggestion = 'Please install Docker Desktop from https://www.docker.com/products/docker-desktop or use Homebrew: brew install docker-compose';
+        } else if (process.platform === 'win32') {
+          // Windows-specific guidance
+          suggestion = 'Please install Docker Desktop from https://www.docker.com/products/docker-desktop';
+        }
+      }
+      
+      this.prettyError('Docker Compose Not Found', message, suggestion);
     }
   }
 
@@ -517,20 +532,38 @@ export class DockerService implements IDockerService {
   }
 
   private async detectDockerComposeCommand(): Promise<void> {
+    let dockerError: Error | null = null;
+    let dockerComposeError: Error | null = null;
+    
     // Try docker compose (new plugin) first
     try {
       await execa('docker', ['compose', '--version'], { stdio: 'ignore' });
       this.dockerComposeCommand = ['docker', 'compose'];
-    } catch {
-      // Fall back to docker-compose (legacy)
-      try {
-        await execa('docker-compose', ['--version'], { stdio: 'ignore' });
-        this.dockerComposeCommand = ['docker-compose'];
-      } catch {
-        // Neither available
-        throw new Error('Neither docker compose nor docker-compose is available');
-      }
+      return;
+    } catch (error) {
+      dockerError = error instanceof Error ? error : new Error(String(error));
     }
+    
+    // Fall back to docker-compose (legacy)
+    try {
+      await execa('docker-compose', ['--version'], { stdio: 'ignore' });
+      this.dockerComposeCommand = ['docker-compose'];
+      return;
+    } catch (error) {
+      dockerComposeError = error instanceof Error ? error : new Error(String(error));
+    }
+    
+    // Neither available - create detailed error message
+    let errorMessage = 'Neither docker compose nor docker-compose is available';
+    
+    // Add more context if Docker isn't found at all
+    if (dockerError?.message.includes('command not found') || dockerError?.message.includes('not found')) {
+      errorMessage += '. Docker is not installed or not in PATH';
+    } else if (dockerComposeError?.message.includes('command not found') || dockerComposeError?.message.includes('not found')) {
+      errorMessage += '. docker-compose is not installed';
+    }
+    
+    throw new Error(errorMessage);
   }
 
   /**

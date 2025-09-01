@@ -593,6 +593,41 @@ FLUSH PRIVILEGES;
       this.log(`  ${chalk.cyan(`${protocol}://localhost:${port}/wp-admin`)}`);
     }
 
+    // Show hosts file warning for custom domains
+    if (flags.domain && !flags.domain.toString().includes('localhost')) {
+      this.log('');
+      this.log(chalk.yellow('⚠️  Failed to update hosts file automatically. Please add this entry manually:'));
+      this.log(chalk.cyan(`   127.0.0.1 ${flags.domain}`));
+      this.log('');
+      this.log(chalk.gray('To add it manually:'));
+      
+      // Check for WSL2 environment
+      const isWSL = process.env.WSL_DISTRO_NAME || process.env.WSLENV || require('fs').existsSync('/proc/version') && require('fs').readFileSync('/proc/version', 'utf8').includes('microsoft');
+      
+      if (process.platform === 'win32') {
+        this.log(chalk.gray('1. Open Command Prompt as Administrator'));
+        this.log(chalk.gray('2. Run: notepad C:\\Windows\\System32\\drivers\\etc\\hosts'));
+        this.log(chalk.gray(`3. Add this line at the end: 127.0.0.1 ${flags.domain}`));
+        this.log(chalk.gray('4. Save and close the file'));
+      } else if (isWSL) {
+        this.log(chalk.yellow('(WSL2 detected - you need to edit the Windows hosts file, not the Linux one)'));
+        this.log(chalk.gray('1. Open Windows File Explorer'));
+        this.log(chalk.gray('2. Navigate to: C:\\Windows\\System32\\drivers\\etc\\'));
+        this.log(chalk.gray('3. Right-click "hosts" file → "Open with" → "Notepad"'));
+        this.log(chalk.gray('4. When prompted, choose "Run as administrator"'));
+        this.log(chalk.gray(`5. Add this line at the end: 127.0.0.1 ${flags.domain}`));
+        this.log(chalk.gray('6. Save and close the file'));
+        this.log(chalk.gray(''));
+        this.log(chalk.gray('Alternative (from Windows PowerShell as Administrator):'));
+        this.log(chalk.gray(`   Add-Content -Path "C:\\Windows\\System32\\drivers\\etc\\hosts" -Value "127.0.0.1 ${flags.domain}"`));
+      } else {
+        this.log(chalk.gray('1. Open terminal'));
+        this.log(chalk.gray('2. Run: sudo nano /etc/hosts'));
+        this.log(chalk.gray(`3. Add this line at the end: 127.0.0.1 ${flags.domain}`));
+        this.log(chalk.gray('4. Save and close the file'));
+      }
+    }
+
     this.log(`\nDefault credentials:`);
     this.log(`  Username: ${chalk.cyan('admin')}`);
     this.log(`  Password: ${chalk.cyan('password')}`);
