@@ -47,7 +47,7 @@ export default class Remove extends BaseCommand {
         if (fs.existsSync(configPath)) {
           config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         }
-      } catch (error) {
+      } catch {
         spinner.info('Could not read project configuration, continuing with cleanup...');
       }
 

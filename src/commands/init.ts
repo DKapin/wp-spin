@@ -6,6 +6,7 @@ import fs from 'fs-extra';
 import { createPromptModule } from 'inquirer';
 import { execSync } from 'node:child_process';
 import crypto from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import net from 'node:net';
 import { arch, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -602,11 +603,11 @@ FLUSH PRIVILEGES;
       this.log(chalk.gray('To add it manually:'));
       
       // Check for WSL2 environment
-      const isWSL = process.env.WSL_DISTRO_NAME || process.env.WSLENV || require('fs').existsSync('/proc/version') && require('fs').readFileSync('/proc/version', 'utf8').includes('microsoft');
+      const isWSL = process.env.WSL_DISTRO_NAME || process.env.WSLENV || existsSync('/proc/version') && readFileSync('/proc/version', 'utf8').includes('microsoft');
       
       if (process.platform === 'win32') {
         this.log(chalk.gray('1. Open Command Prompt as Administrator'));
-        this.log(chalk.gray('2. Run: notepad C:\\Windows\\System32\\drivers\\etc\\hosts'));
+        this.log(chalk.gray(String.raw`2. Run: notepad C:\Windows\System32\drivers\etc\hosts`));
         this.log(chalk.gray(`3. Add this line at the end: 127.0.0.1 ${flags.domain}`));
         this.log(chalk.gray('4. Save and close the file'));
       } else if (isWSL) {

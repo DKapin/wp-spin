@@ -179,6 +179,7 @@ export class PortManagerService {
       if (command) {
         await execAsync(command);
       }
+
       return true;
     } catch {
       return false;
