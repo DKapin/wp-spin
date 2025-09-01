@@ -150,6 +150,25 @@ export abstract class BaseCommand extends Command {
   }
 
   /**
+   * Fix file permissions for Docker-created files using Docker
+   */
+  protected async fixFilePermissions(projectPath: string): Promise<void> {
+    try {
+      // Get current user ID (typically 1000 in WSL/Linux)
+      const userId = process.getuid ? process.getuid() : 1000;
+      const groupId = process.getgid ? process.getgid() : 1000;
+      
+      // Use Docker to fix permissions since files were created by Docker
+      execSync(`docker run --rm -v "${projectPath}:/workspace" ubuntu:22.04 chown -R ${userId}:${groupId} /workspace`, { 
+        stdio: 'pipe' 
+      });
+    } catch {
+      // If Docker approach fails, log warning but don't fail the operation
+      console.warn('⚠️  Could not fix file permissions automatically. You may need to use sudo to remove files.');
+    }
+  }
+
+  /**
    * Get container names for the current project
    * Docker Compose automatically adds a -1 suffix to service names
    */
@@ -237,25 +256,6 @@ export abstract class BaseCommand extends Command {
     const normalizedPath = path.normalize();
     // Allow absolute paths but prevent directory traversal
     return !normalizedPath.includes('..');
-  }
-
-  /**
-   * Fix file permissions for Docker-created files using Docker
-   */
-  protected async fixFilePermissions(projectPath: string): Promise<void> {
-    try {
-      // Get current user ID (typically 1000 in WSL/Linux)
-      const userId = process.getuid ? process.getuid() : 1000;
-      const groupId = process.getgid ? process.getgid() : 1000;
-      
-      // Use Docker to fix permissions since files were created by Docker
-      execSync(`docker run --rm -v "${projectPath}:/workspace" ubuntu:22.04 chown -R ${userId}:${groupId} /workspace`, { 
-        stdio: 'pipe' 
-      });
-    } catch (error) {
-      // If Docker approach fails, log warning but don't fail the operation
-      console.warn('⚠️  Could not fix file permissions automatically. You may need to use sudo to remove files.');
-    }
   }
 
   /**

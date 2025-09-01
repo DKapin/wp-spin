@@ -156,15 +156,15 @@ http {
 
   private async addHostsEntry(domain: string): Promise<void> {
     const hostsEntry = `127.0.0.1 ${domain}`;
-    const results: { location: string; success: boolean; error?: string }[] = [];
+    const results: { error?: string; location: string; success: boolean; }[] = [];
 
     // Determine which hosts files to update
     const hostsFiles = this.getHostsFilesToUpdate();
     
-    for (const { path: hostsFile, description, isWSL } of hostsFiles) {
+    for (const { description, path: hostsFile } of hostsFiles) {
       try {
         if (!fs.existsSync(hostsFile)) {
-          results.push({ location: description, success: false, error: 'Hosts file not found' });
+          results.push({ error: 'Hosts file not found', location: description, success: false });
           continue;
         }
 
@@ -195,7 +195,7 @@ http {
         
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        results.push({ location: description, success: false, error: errorMessage });
+        results.push({ error: errorMessage, location: description, success: false });
       }
     }
 
@@ -218,6 +218,7 @@ http {
         } else {
           console.warn(`${failure.location}: Run "sudo echo '${hostsEntry}' >> ${failure.location.split(' ')[0]}"`);
         }
+
         console.warn('');
       }
       
@@ -228,6 +229,7 @@ http {
       for (const failure of failures) {
         console.warn(`   ${failure.location}: ${failure.error}`);
       }
+
       console.warn(`\n💡 You may need to manually add "${hostsEntry}" to the failed locations for full compatibility.`);
     } else if (wasAdded) {
       console.log(`✓ Successfully added ${domain} to hosts file(s)`);
@@ -238,64 +240,6 @@ http {
       console.warn('   • Wait a few minutes and try again');
       console.warn('   • Flush DNS cache: ipconfig /flushdns (Windows) or sudo systemctl restart systemd-resolved (Linux)');
       console.warn(`   • Verify manually that "${hostsEntry}" exists in your hosts file`);
-    }
-  }
-
-  private getHostsFilesToUpdate(): { path: string; description: string; isWSL: boolean }[] {
-    const files: { path: string; description: string; isWSL: boolean }[] = [];
-    
-    if (this.isRunningInWSL()) {
-      // In WSL, only update the Windows hosts file since WSL's /etc/hosts is auto-generated and ephemeral
-      const windowsHostsPath = '/mnt/c/Windows/System32/drivers/etc/hosts';
-      if (fs.existsSync(windowsHostsPath)) {
-        files.push({
-          path: windowsHostsPath,
-          description: 'Windows hosts file (via WSL)',
-          isWSL: true
-        });
-      } else {
-        // Fallback to WSL hosts if Windows hosts not accessible, but warn user
-        files.push({
-          path: '/etc/hosts',
-          description: 'WSL hosts file (temporary - will reset on WSL restart)',
-          isWSL: false
-        });
-      }
-    } else if (process.platform === 'win32') {
-      // Native Windows
-      files.push({
-        path: String.raw`C:\Windows\System32\drivers\etc\hosts`,
-        description: 'Windows hosts file',
-        isWSL: false
-      });
-    } else {
-      // Native Linux/macOS
-      files.push({
-        path: '/etc/hosts',
-        description: 'System hosts file',
-        isWSL: false
-      });
-    }
-    
-    return files;
-  }
-
-  private isRunningInWSL(): boolean {
-    try {
-      // Check for WSL indicators
-      if (process.env.WSL_DISTRO_NAME || process.env.WSLENV) {
-        return true;
-      }
-      
-      // Check /proc/version for Microsoft
-      if (fs.existsSync('/proc/version')) {
-        const version = fs.readFileSync('/proc/version', 'utf8');
-        return version.toLowerCase().includes('microsoft') || version.toLowerCase().includes('wsl');
-      }
-      
-      return false;
-    } catch {
-      return false;
     }
   }
 
@@ -321,22 +265,24 @@ http {
 
   private addWindowsHostsEntryFromWSL(_hostsFile: string, hostsEntry: string): void {
     try {
-      // Convert WSL path to Windows path for PowerShell
-      const windowsPath = 'C:\\Windows\\System32\\drivers\\etc\\hosts';
       
-      // Try using PowerShell through WSL interop with elevated privileges
-      const powershellCommand = `powershell.exe -Command "Start-Process powershell -ArgumentList '-Command', 'Add-Content -Path \\\"${windowsPath}\\\" -Value \\\"${hostsEntry}\\\"' -Verb RunAs -Wait"`;
+      const windowsPath = String.raw`C:\Windows\System32\drivers\etc\hosts`;
+      const powershellCommand =
+        `powershell.exe -Command "Start-Process powershell ` +
+        `-ArgumentList '-Command', 'Add-Content -Path ''${windowsPath}'' -Value ''${hostsEntry}''' ` +
+        `-Verb RunAs -Wait"`;
       execSync(powershellCommand, { stdio: 'pipe' });
-    } catch (elevatedError) {
+
+    } catch {
       try {
         // Fallback: Try PowerShell without explicit elevation (user might have admin terminal)
-        const windowsPath = 'C:\\Windows\\System32\\drivers\\etc\\hosts';
+        const windowsPath = String.raw`C:\Windows\System32\drivers\etc\hosts`;
         const fallbackCommand = `powershell.exe -Command "Add-Content -Path '${windowsPath}' -Value '${hostsEntry}'"`;
         execSync(fallbackCommand, { stdio: 'pipe' });
-      } catch (fallbackError) {
+      } catch {
         try {
           // Try using cmd.exe as another fallback
-          const windowsPath = 'C:\\Windows\\System32\\drivers\\etc\\hosts';
+          const windowsPath = String.raw`C:\Windows\System32\drivers\etc\hosts`;
           execSync(`cmd.exe /c "echo ${hostsEntry} >> ${windowsPath}"`, { stdio: 'pipe' });
         } catch {
           // Instead of throwing an error, provide helpful instructions
@@ -348,10 +294,31 @@ http {
    
    OR manually edit C:\\Windows\\System32\\drivers\\etc\\hosts and add:
    ${hostsEntry}`);
-          return; // Don't throw error, just warn and continue
+           // Don't throw error, just warn and continue
         }
       }
     }
+  }
+
+  private checkHostsFilesForDomain(domain: string): boolean {
+    const hostsFiles = this.getHostsFilesToUpdate();
+    const hostsEntry = `127.0.0.1 ${domain}`;
+    
+    for (const { path: hostsFile } of hostsFiles) {
+      try {
+        if (fs.existsSync(hostsFile)) {
+          const content = fs.readFileSync(hostsFile, 'utf8');
+          if (content.includes(hostsEntry)) {
+            return true;
+          }
+        }
+      } catch {
+        // Ignore permission errors when checking
+        continue;
+      }
+    }
+
+    return false;
   }
 
   private ensureCertsDir(): void {
@@ -375,8 +342,10 @@ http {
               try { group = execSync(`id -gn ${username}`, { encoding: 'utf8' }).trim(); } catch { group = username; }
               break;
             }
+
             default: { group = username; }
           }
+
           execSync(`sudo chown -R ${username}:${group} ${this.certsDir}`, { stdio: 'inherit' });
         }
       }
@@ -547,6 +516,45 @@ http {
     return availablePort;
   }
 
+  private getHostsFilesToUpdate(): { description: string; isWSL: boolean; path: string; }[] {
+    const files: { description: string; isWSL: boolean; path: string; }[] = [];
+    
+    if (this.isRunningInWSL()) {
+      // In WSL, only update the Windows hosts file since WSL's /etc/hosts is auto-generated and ephemeral
+      const windowsHostsPath = '/mnt/c/Windows/System32/drivers/etc/hosts';
+      if (fs.existsSync(windowsHostsPath)) {
+        files.push({
+          description: 'Windows hosts file (via WSL)',
+          isWSL: true,
+          path: windowsHostsPath
+        });
+      } else {
+        // Fallback to WSL hosts if Windows hosts not accessible, but warn user
+        files.push({
+          description: 'WSL hosts file (temporary - will reset on WSL restart)',
+          isWSL: false,
+          path: '/etc/hosts'
+        });
+      }
+    } else if (process.platform === 'win32') {
+      // Native Windows
+      files.push({
+        description: 'Windows hosts file',
+        isWSL: false,
+        path: String.raw`C:\Windows\System32\drivers\etc\hosts`
+      });
+    } else {
+      // Native Linux/macOS
+      files.push({
+        description: 'System hosts file',
+        isWSL: false,
+        path: '/etc/hosts'
+      });
+    }
+    
+    return files;
+  }
+
   private getPortMap(): Record<string, number> {
     try {
       return JSON.parse(fs.readFileSync(this.portMapFile, 'utf8'));
@@ -555,44 +563,10 @@ http {
     }
   }
 
-  private async verifyHostsEntry(domain: string): Promise<boolean> {
-    try {
-      const dns = await import('node:dns');
-      const { promisify } = await import('node:util');
-      const lookup = promisify(dns.lookup);
-      
-      const result = await lookup(domain);
-      return result.address === '127.0.0.1';
-    } catch {
-      // If DNS lookup fails, check hosts files directly
-      return this.checkHostsFilesForDomain(domain);
-    }
-  }
-
-  private checkHostsFilesForDomain(domain: string): boolean {
-    const hostsFiles = this.getHostsFilesToUpdate();
-    const hostsEntry = `127.0.0.1 ${domain}`;
-    
-    for (const { path: hostsFile } of hostsFiles) {
-      try {
-        if (fs.existsSync(hostsFile)) {
-          const content = fs.readFileSync(hostsFile, 'utf8');
-          if (content.includes(hostsEntry)) {
-            return true;
-          }
-        }
-      } catch {
-        // Ignore permission errors when checking
-        continue;
-      }
-    }
-    return false;
-  }
-
   private getWindowsHostsInstructions(hostsEntry: string, hostsFile: string): string {
     const isWSL = this.isRunningInWSL();
     const hostsPath = isWSL 
-      ? 'C:\\Windows\\System32\\drivers\\etc\\hosts'
+      ? String.raw`C:\Windows\System32\drivers\etc\hosts`
       : hostsFile;
     const domain = hostsEntry.split(' ')[1];
 
@@ -753,6 +727,25 @@ ${isWSL ? '💡 Note: You\'re using WSL, so changes must be made to the Windows 
     });
   }
 
+  private isRunningInWSL(): boolean {
+    try {
+      // Check for WSL indicators
+      if (process.env.WSL_DISTRO_NAME || process.env.WSLENV) {
+        return true;
+      }
+      
+      // Check /proc/version for Microsoft
+      if (fs.existsSync('/proc/version')) {
+        const version = fs.readFileSync('/proc/version', 'utf8');
+        return version.toLowerCase().includes('microsoft') || version.toLowerCase().includes('wsl');
+      }
+      
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   private async promptInstallMkcert(): Promise<boolean> {
     const prompt = createPromptModule();
     const { shouldInstall } = await prompt({
@@ -775,9 +768,9 @@ ${isWSL ? '💡 Note: You\'re using WSL, so changes must be made to the Windows 
   private removeHostsEntry(domain: string): void {
     const hostsEntry = `127.0.0.1 ${domain}`;
     const hostsFiles = this.getHostsFilesToUpdate();
-    const results: { location: string; success: boolean; error?: string }[] = [];
+    const results: { error?: string; location: string; success: boolean; }[] = [];
 
-    for (const { path: hostsFile, description, isWSL } of hostsFiles) {
+    for (const { description, isWSL, path: hostsFile } of hostsFiles) {
       try {
         if (!fs.existsSync(hostsFile)) {
           results.push({ location: description, success: true }); // Not an error if file doesn't exist
@@ -806,7 +799,7 @@ ${isWSL ? '💡 Note: You\'re using WSL, so changes must be made to the Windows 
         
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        results.push({ location: description, success: false, error: errorMessage });
+        results.push({ error: errorMessage, location: description, success: false });
       }
     }
 
@@ -817,6 +810,7 @@ ${isWSL ? '💡 Note: You\'re using WSL, so changes must be made to the Windows 
       for (const failure of failures) {
         console.warn(`   ${failure.location}: ${failure.error}`);
       }
+
       console.warn(`\n💡 You may need to manually remove "${hostsEntry}" from the failed locations.`);
     }
   }
@@ -888,6 +882,20 @@ server {
       } else {
         execSync(`echo '${config}' | sudo tee ${configPath} > /dev/null`);
       }
+    }
+  }
+
+  private async verifyHostsEntry(domain: string): Promise<boolean> {
+    try {
+      const dns = await import('node:dns');
+      const { promisify } = await import('node:util');
+      const lookup = promisify(dns.lookup);
+      
+      const result = await lookup(domain);
+      return result.address === '127.0.0.1';
+    } catch {
+      // If DNS lookup fails, check hosts files directly
+      return this.checkHostsFilesForDomain(domain);
     }
   }
 } 
