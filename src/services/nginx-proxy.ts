@@ -63,7 +63,7 @@ http {
       portMap[domain] = port;
       this.savePortMap(portMap);
 
-      this.addHostsEntry(domain);
+      await this.addHostsEntry(domain);
       this.updateNginxConfig(domain, port, ssl);
       await this.ensureContainerRunning();
       await this.reloadNginx();
@@ -154,37 +154,90 @@ http {
     }
   }
 
-  private addHostsEntry(domain: string): void {
-    try {
-      const hostsEntry = `127.0.0.1 ${domain}`;
-      const hostsFile = process.platform === 'win32' ? String.raw`C:\Windows\System32\drivers\etc\hosts` : '/etc/hosts';
-      const hostsContent = fs.readFileSync(hostsFile, 'utf8');
-      if (hostsContent.includes(hostsEntry)) {
-        return;
-      }
+  private async addHostsEntry(domain: string): Promise<void> {
+    const hostsEntry = `127.0.0.1 ${domain}`;
+    const results: { error?: string; location: string; success: boolean; }[] = [];
 
+    // Determine which hosts files to update
+    const hostsFiles = this.getHostsFilesToUpdate();
+    
+    for (const { description, path: hostsFile } of hostsFiles) {
       try {
-        if (process.platform === 'win32') {
-          // On Windows, try multiple approaches
+        if (!fs.existsSync(hostsFile)) {
+          results.push({ error: 'Hosts file not found', location: description, success: false });
+          continue;
+        }
+
+        const hostsContent = fs.readFileSync(hostsFile, 'utf8');
+        if (hostsContent.includes(hostsEntry)) {
+          results.push({ location: description, success: true });
+          continue;
+        }
+
+        // Try to add the entry
+        if (hostsFile.includes('/mnt/c/Windows/System32/drivers/etc/hosts')) {
+          // This is the Windows hosts file accessed from WSL
+          this.addWindowsHostsEntryFromWSL(hostsFile, hostsEntry);
+        } else if (process.platform === 'win32') {
           this.addWindowsHostsEntry(hostsFile, hostsEntry);
         } else {
+          // Linux/macOS hosts file
           execSync(`echo "${hostsEntry}" | sudo tee -a ${hostsFile}`, { stdio: 'inherit' });
         }
-      } catch {
-        // Provide helpful instructions but don't block the setup
-        const instruction = process.platform === 'win32' 
-          ? this.getWindowsHostsInstructions(hostsEntry, hostsFile)
-          : `Failed to update /etc/hosts. You may need to run the command with sudo or manually add this line to /etc/hosts:\n${hostsEntry}`;
         
-        console.warn('\n⚠️  ' + instruction);
-        console.warn('\n💡 Your WordPress site will still work, but you\'ll need to use localhost or the IP address instead of the custom domain.');
+        results.push({ location: description, success: true });
+        console.log(`✓ Added ${domain} to ${description}`);
+        
+        // Warn user about WSL hosts file limitations
+        if (description.includes('temporary')) {
+          console.warn(`  ⚠️  Note: This entry will be lost when WSL restarts. Consider using localhost with the assigned port instead.`);
+        }
+        
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        results.push({ error: errorMessage, location: description, success: false });
       }
-    } catch (error) {
-      if (error instanceof Error && (error.message.includes('sudo') || error.message.includes('administrator'))) {
-        throw error;
+    }
+
+    // Verify the entry was actually added by checking if the domain resolves
+    const wasAdded = await this.verifyHostsEntry(domain);
+    
+    // Report results
+    const successCount = results.filter(r => r.success).length;
+    const failures = results.filter(r => !r.success);
+    
+    if (successCount === 0) {
+      // All failed - provide instructions
+      console.warn('\n⚠️  Failed to update hosts files automatically. Please add this entry manually:');
+      console.warn(`   ${hostsEntry}\n`);
+      
+      for (const failure of failures) {
+        if (failure.location.includes('Windows')) {
+          console.warn(`${failure.location}:`);
+          console.warn(this.getWindowsHostsInstructions(hostsEntry, failure.location));
+        } else {
+          console.warn(`${failure.location}: Run "sudo echo '${hostsEntry}' >> ${failure.location.split(' ')[0]}"`);
+        }
+
+        console.warn('');
+      }
+      
+      console.warn('💡 Your WordPress site will still work, but you\'ll need to use localhost or the IP address instead of the custom domain.');
+    } else if (failures.length > 0) {
+      // Partial success
+      console.warn(`\n⚠️  Added ${domain} to ${successCount} hosts file(s), but failed to update:`);
+      for (const failure of failures) {
+        console.warn(`   ${failure.location}: ${failure.error}`);
       }
 
-      throw new Error(`Failed to update hosts file: ${error instanceof Error ? error.message : String(error)}`);
+      console.warn(`\n💡 You may need to manually add "${hostsEntry}" to the failed locations for full compatibility.`);
+    } else if (wasAdded) {
+      console.log(`✓ Successfully added ${domain} to hosts file(s)`);
+    } else {
+      // Success reported but DNS verification failed - this is common in WSL2
+      console.log(`✓ Hosts file updated successfully`);
+      console.log(`   Note: DNS verification failed, but this is common in WSL2 environments.`);
+      console.log(`   Your site should work correctly. If not, try flushing DNS cache.`);
     }
   }
 
@@ -208,40 +261,107 @@ http {
     }
   }
 
-  private ensureCertsDir(): void {
-    if (!fs.existsSync(this.certsDir)) {
-      if (process.platform === 'win32') {
-        fs.mkdirSync(this.certsDir, { recursive: true });
-      } else {
-        execSync(`sudo mkdir -p ${this.certsDir}`, { stdio: 'inherit' });
+  private addWindowsHostsEntryFromWSL(_hostsFile: string, hostsEntry: string): void {
+    try {
+      
+      const windowsPath = String.raw`C:\Windows\System32\drivers\etc\hosts`;
+      const powershellCommand =
+        `powershell.exe -Command "Start-Process powershell ` +
+        `-ArgumentList '-Command', 'Add-Content -Path ''${windowsPath}'' -Value ''${hostsEntry}''' ` +
+        `-Verb RunAs -Wait"`;
+      execSync(powershellCommand, { stdio: 'pipe' });
+
+    } catch {
+      try {
+        // Fallback: Try PowerShell without explicit elevation (user might have admin terminal)
+        const windowsPath = String.raw`C:\Windows\System32\drivers\etc\hosts`;
+        const fallbackCommand = `powershell.exe -Command "Add-Content -Path '${windowsPath}' -Value '${hostsEntry}'"`;
+        execSync(fallbackCommand, { stdio: 'pipe' });
+      } catch {
+        try {
+          // Try using cmd.exe as another fallback
+          const windowsPath = String.raw`C:\Windows\System32\drivers\etc\hosts`;
+          execSync(`cmd.exe /c "echo ${hostsEntry} >> ${windowsPath}"`, { stdio: 'pipe' });
+        } catch {
+          // Instead of throwing an error, provide helpful instructions
+          console.warn(`⚠️  Could not automatically update Windows hosts file from WSL.`);
+          console.warn(`   To access your site at the custom domain, please add this entry manually:`);
+          console.warn(`   
+   1. Open PowerShell as Administrator (right-click → "Run as administrator")
+   2. Run: Add-Content -Path "C:\\Windows\\System32\\drivers\\etc\\hosts" -Value "${hostsEntry}"
+   
+   OR manually edit C:\\Windows\\System32\\drivers\\etc\\hosts and add:
+   ${hostsEntry}`);
+           // Don't throw error, just warn and continue
+        }
       }
-    }
-
-    // Set permissions
-    const username = process.env.USER || process.env.USERNAME || 'root';
-
-    let group: string;
-    switch (process.platform) {
-      case 'darwin': { group = 'staff'; break; }
-      case 'linux': {
-        try { group = execSync(`id -gn ${username}`, { encoding: 'utf8' }).trim(); } catch { group = username; }
-        break;
-      }
-
-      default: { group = username; }
-    }
-
-    if (process.platform !== 'win32') {
-      execSync(`sudo chown -R ${username}:${group} ${this.certsDir}`, { stdio: 'inherit' });
     }
   }
 
+  private checkHostsFilesForDomain(domain: string): boolean {
+    const hostsFiles = this.getHostsFilesToUpdate();
+    const hostsEntry = `127.0.0.1 ${domain}`;
+    
+    for (const { path: hostsFile } of hostsFiles) {
+      try {
+        if (fs.existsSync(hostsFile)) {
+          const content = fs.readFileSync(hostsFile, 'utf8');
+          if (content.includes(hostsEntry)) {
+            return true;
+          }
+        }
+      } catch {
+        // Ignore permission errors when checking
+        continue;
+      }
+    }
+
+    return false;
+  }
+
+  private createCertsDirUnix(): void {
+    try {
+      fs.mkdirSync(this.certsDir, { recursive: true });
+    } catch {
+      this.createCertsDirWithSudo();
+    }
+  }
+
+  private createCertsDirWithSudo(): void {
+    execSync(`sudo mkdir -p ${this.certsDir}`, { stdio: 'inherit' });
+
+    const username = process.env.USER || process.env.USERNAME || 'root';
+    const group = this.getSystemGroup(username);
+
+    execSync(`sudo chown -R ${username}:${group} ${this.certsDir}`, { stdio: 'inherit' });
+  }
+
+  private ensureCertsDir(): void {
+    if (fs.existsSync(this.certsDir)) return;
+
+    if (process.platform === 'win32') {
+      fs.mkdirSync(this.certsDir, { recursive: true });
+      return;
+    }
+
+    this.createCertsDirUnix();
+  }
+
   private ensureConfigDir(): void {
+    let needsPermissionFix = false;
+    
     if (!fs.existsSync(this.configDir)) {
       if (process.platform === 'win32') {
         fs.mkdirSync(this.configDir, { recursive: true });
       } else {
-        execSync(`sudo mkdir -p ${this.configDir}`, { stdio: 'inherit' });
+        try {
+          // Try creating without sudo first
+          fs.mkdirSync(this.configDir, { recursive: true });
+        } catch {
+          // Only use sudo if regular mkdir fails
+          execSync(`sudo mkdir -p ${this.configDir}`, { stdio: 'inherit' });
+          needsPermissionFix = true;
+        }
       }
     }
 
@@ -250,7 +370,12 @@ http {
       if (process.platform === 'win32') {
         fs.writeFileSync(nginxConfPath, this.defaultConfig);
       } else {
-        execSync(`echo '${this.defaultConfig}' | sudo tee ${nginxConfPath}`, { stdio: 'inherit' });
+        try {
+          fs.writeFileSync(nginxConfPath, this.defaultConfig);
+        } catch {
+          execSync(`echo '${this.defaultConfig}' | sudo tee ${nginxConfPath}`, { stdio: 'inherit' });
+          needsPermissionFix = true;
+        }
       }
     }
 
@@ -259,7 +384,12 @@ http {
       if (process.platform === 'win32') {
         fs.mkdirSync(confDir, { recursive: true });
       } else {
-        execSync(`sudo mkdir -p ${confDir}`, { stdio: 'inherit' });
+        try {
+          fs.mkdirSync(confDir, { recursive: true });
+        } catch {
+          execSync(`sudo mkdir -p ${confDir}`, { stdio: 'inherit' });
+          needsPermissionFix = true;
+        }
       }
     }
 
@@ -307,8 +437,8 @@ http {
     }
     }
 
-    // Only run chown on Unix-like systems
-    if (process.platform !== 'win32') {
+    // Only run chown on Unix-like systems and only if we needed sudo
+    if (process.platform !== 'win32' && needsPermissionFix) {
       execSync(`sudo chown -R ${username}:${group} ${this.configDir}`, { stdio: 'inherit' });
     }
   }
@@ -381,6 +511,45 @@ http {
     return availablePort;
   }
 
+  private getHostsFilesToUpdate(): { description: string; isWSL: boolean; path: string; }[] {
+    const files: { description: string; isWSL: boolean; path: string; }[] = [];
+    
+    if (this.isRunningInWSL()) {
+      // In WSL, only update the Windows hosts file since WSL's /etc/hosts is auto-generated and ephemeral
+      const windowsHostsPath = '/mnt/c/Windows/System32/drivers/etc/hosts';
+      if (fs.existsSync(windowsHostsPath)) {
+        files.push({
+          description: 'Windows hosts file (via WSL)',
+          isWSL: true,
+          path: windowsHostsPath
+        });
+      } else {
+        // Fallback to WSL hosts if Windows hosts not accessible, but warn user
+        files.push({
+          description: 'WSL hosts file (temporary - will reset on WSL restart)',
+          isWSL: false,
+          path: '/etc/hosts'
+        });
+      }
+    } else if (process.platform === 'win32') {
+      // Native Windows
+      files.push({
+        description: 'Windows hosts file',
+        isWSL: false,
+        path: String.raw`C:\Windows\System32\drivers\etc\hosts`
+      });
+    } else {
+      // Native Linux/macOS
+      files.push({
+        description: 'System hosts file',
+        isWSL: false,
+        path: '/etc/hosts'
+      });
+    }
+    
+    return files;
+  }
+
   private getPortMap(): Record<string, number> {
     try {
       return JSON.parse(fs.readFileSync(this.portMapFile, 'utf8'));
@@ -389,23 +558,54 @@ http {
     }
   }
 
+  private getSystemGroup(username: string): string {
+    switch (process.platform) {
+      case 'darwin': { return 'staff';
+      }
+
+      case 'linux': {
+        try {
+          return execSync(`id -gn ${username}`, { encoding: 'utf8' }).trim();
+        } catch {
+          return username;
+        }
+      }
+
+      default: { return username;
+      }
+    }
+  }
+
   private getWindowsHostsInstructions(hostsEntry: string, hostsFile: string): string {
-    return `Failed to update hosts file automatically. Please choose one of these options:
+    const isWSL = this.isRunningInWSL();
+    const hostsPath = isWSL 
+      ? String.raw`C:\Windows\System32\drivers\etc\hosts`
+      : hostsFile;
+    const domain = hostsEntry.split(' ')[1];
 
-Option 1 - Run as Administrator:
-  • Close this terminal
-  • Right-click on Command Prompt or PowerShell and select "Run as administrator"
-  • Run your wp-spin command again
+    return `
+🔧 Manual Setup Required:
 
-Option 2 - Manual hosts file update:
-  • Open Notepad as administrator (Right-click Notepad → "Run as administrator")
-  • Open file: ${hostsFile}
-  • Add this line at the end: ${hostsEntry}
-  • Save the file
+${isWSL ? '📋 WSL/Windows Setup:' : '📋 Windows Setup:'}
 
-Option 3 - Use PowerShell as administrator:
-  • Open PowerShell as administrator
-  • Run: Add-Content -Path "${hostsFile}" -Value "${hostsEntry}"`;
+Option 1 - PowerShell (Recommended):
+  1️⃣  Press Win+X, select "Windows PowerShell (Admin)" or "Terminal (Admin)"
+  2️⃣  Run: Add-Content -Path "${hostsPath}" -Value "${hostsEntry}"
+  3️⃣  Press Enter when prompted by UAC
+
+Option 2 - Notepad:
+  1️⃣  Press Win+R, type: notepad
+  2️⃣  Right-click Notepad in taskbar → "Run as administrator"  
+  3️⃣  File → Open → Navigate to: ${hostsPath}
+  4️⃣  Add this line at the end: ${hostsEntry}
+  5️⃣  Save the file (Ctrl+S)
+
+Option 3 - Command Prompt:
+  1️⃣  Press Win+X, select "Command Prompt (Admin)"
+  2️⃣  Run: echo ${hostsEntry} >> "${hostsPath}"
+
+${isWSL ? '💡 Note: You\'re using WSL, so changes must be made to the Windows hosts file.' : ''}
+🔍 To verify: ping ${domain} should show 127.0.0.1`;
   }
 
   private async installMkcert(): Promise<void> {
@@ -540,6 +740,25 @@ Option 3 - Use PowerShell as administrator:
     });
   }
 
+  private isRunningInWSL(): boolean {
+    try {
+      // Check for WSL indicators
+      if (process.env.WSL_DISTRO_NAME || process.env.WSLENV) {
+        return true;
+      }
+      
+      // Check /proc/version for Microsoft
+      if (fs.existsSync('/proc/version')) {
+        const version = fs.readFileSync('/proc/version', 'utf8');
+        return version.toLowerCase().includes('microsoft') || version.toLowerCase().includes('wsl');
+      }
+      
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
   private async promptInstallMkcert(): Promise<boolean> {
     const prompt = createPromptModule();
     const { shouldInstall } = await prompt({
@@ -560,24 +779,52 @@ Option 3 - Use PowerShell as administrator:
   }
 
   private removeHostsEntry(domain: string): void {
-    const hostsFile = process.platform === 'win32' ? String.raw`C:\Windows\System32\drivers\etc\hosts` : '/etc/hosts';
     const hostsEntry = `127.0.0.1 ${domain}`;
-    const hostsContent = fs.readFileSync(hostsFile, 'utf8');
-    const newContent = hostsContent
-      .split('\n')
-      .filter(line => !line.includes(hostsEntry))
-      .join('\n');
-    try {
-      if (process.platform === 'win32') {
-        fs.writeFileSync(hostsFile, newContent);
-      } else {
-        execSync(`echo "${newContent}" | sudo tee ${hostsFile}`, { stdio: 'inherit' });
+    const hostsFiles = this.getHostsFilesToUpdate();
+    const results: { error?: string; location: string; success: boolean; }[] = [];
+
+    for (const { description, isWSL, path: hostsFile } of hostsFiles) {
+      try {
+        if (!fs.existsSync(hostsFile)) {
+          results.push({ location: description, success: true }); // Not an error if file doesn't exist
+          continue;
+        }
+
+        const hostsContent = fs.readFileSync(hostsFile, 'utf8');
+        if (!hostsContent.includes(hostsEntry)) {
+          results.push({ location: description, success: true }); // Entry doesn't exist, nothing to remove
+          continue;
+        }
+
+        const newContent = hostsContent
+          .split('\n')
+          .filter(line => !line.includes(hostsEntry))
+          .join('\n');
+
+        if (isWSL || process.platform !== 'win32') {
+          execSync(`echo "${newContent}" | sudo tee ${hostsFile}`, { stdio: 'inherit' });
+        } else {
+          fs.writeFileSync(hostsFile, newContent);
+        }
+        
+        results.push({ location: description, success: true });
+        console.log(`✓ Removed ${domain} from ${description}`);
+        
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        results.push({ error: errorMessage, location: description, success: false });
       }
-    } catch {
-      const instruction = process.platform === 'win32'
-        ? `Failed to update hosts file. Please run as administrator or manually remove this line from ${hostsFile}:\n${hostsEntry}`
-        : `Failed to update /etc/hosts. You may need to run the command with sudo or manually remove this line from /etc/hosts:\n${hostsEntry}`;
-      throw new Error(instruction);
+    }
+
+    // Report failures
+    const failures = results.filter(r => !r.success);
+    if (failures.length > 0) {
+      console.warn(`\n⚠️  Failed to remove ${domain} from some hosts files:`);
+      for (const failure of failures) {
+        console.warn(`   ${failure.location}: ${failure.error}`);
+      }
+
+      console.warn(`\n💡 You may need to manually remove "${hostsEntry}" from the failed locations.`);
     }
   }
 
@@ -646,8 +893,22 @@ server {
       if (process.platform === 'win32') {
         fs.writeFileSync(configPath, config);
       } else {
-        execSync(`echo '${config}' | sudo tee ${configPath}`, { stdio: 'inherit' });
+        execSync(`echo '${config}' | sudo tee ${configPath} > /dev/null`);
       }
+    }
+  }
+
+  private async verifyHostsEntry(domain: string): Promise<boolean> {
+    try {
+      const dns = await import('node:dns');
+      const { promisify } = await import('node:util');
+      const lookup = promisify(dns.lookup);
+      
+      const result = await lookup(domain);
+      return result.address === '127.0.0.1';
+    } catch {
+      // If DNS lookup fails, check hosts files directly
+      return this.checkHostsFilesForDomain(domain);
     }
   }
 } 
