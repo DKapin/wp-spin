@@ -106,6 +106,7 @@
     "manifest": "oclif manifest",
     "readme": "oclif readme",
     "lint": "eslint",
+    "postinstall": "node scripts/postinstall.cjs",
     "postpack": "shx rm -f oclif.manifest.json",
     "prepack": "npm run manifest && npm run readme",
     "test": "node test.js",
