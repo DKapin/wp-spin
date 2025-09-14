@@ -152,7 +152,9 @@ export default class Share extends BaseCommand {
       await this.ensureNgrokInstalled(spinner);
       
       // Get actual WordPress port if possible
+      console.log(`DEBUG: About to call getWordPressPort with: ${flags.port ?? 8080}`);
       const port = await this.getWordPressPort(flags.port ?? 8080);
+      console.log(`DEBUG: getWordPressPort returned: ${port}`);
       
       // Start ngrok and handle the tunnel
       await this.startNgrokTunnel(port, flags as ShareFlags, spinner);
@@ -905,31 +907,94 @@ wp option update siteurl '${ngrokUrl}' --allow-root
    * Get the actual WordPress port from Docker
    */
   private async getWordPressPort(defaultPort: number): Promise<number> {
+    console.log(`DEBUG: getWordPressPort called with defaultPort: ${defaultPort}`);
+    
     const projectPath = this.docker?.getProjectPath(); // Get project path from docker service
+    console.log(`DEBUG: projectPath: ${projectPath}`);
+    
     if (!projectPath) {
+      console.log(`DEBUG: No project path, returning default: ${defaultPort}`);
       // If no project path, return the default/provided port
       return defaultPort;
     }
 
     try {
-      // Use docker-compose ps to get the port for the specific project
-      const { stdout } = await execa('docker-compose', ['-f', `${projectPath}/docker-compose.yml`, 'ps', 'wordpress'], {
-        cwd: projectPath // Run in project directory
-      });
+      // Try multiple methods to get the actual port
       
-      // Parse the output to find the port mapping
-      // Example output line: test-site_wordpress_1 ... 0.0.0.0:8083->80/tcp ...
-      const lines = stdout.split('\n');
-      for (const line of lines) {
-        if (line.includes('_wordpress')) { // Check for the wordpress service name
-           const match = line.match(/0\.0\.0\.0:(\d+)->80\/tcp/);
-           if (match && match[1]) {
-             return Number.parseInt(match[1], 10);
-           }
+      // Method 1: Use docker compose ps (V2 command)
+      try {
+        const { stdout } = await execa('docker', ['compose', '-f', `${projectPath}/docker-compose.yml`, 'ps', '--format', 'table'], {
+          cwd: projectPath
+        });
+        
+        // Parse the output to find the port mapping
+        const lines = stdout.split('\n');
+        for (const line of lines) {
+          if (line.includes('wordpress') && line.includes('->80/tcp')) {
+            if (this.flags.debug) {
+              console.log(`Found WordPress line: ${line}`);
+            }
+            const match = line.match(/0\.0\.0\.0:(\d+)->80\/tcp/);
+            if (match && match[1]) {
+              if (this.flags.debug) {
+                console.log(`Extracted port from docker compose: ${match[1]}`);
+              }
+              return Number.parseInt(match[1], 10);
+            }
+          }
         }
+      } catch (error) {
+        if (this.flags.debug) {
+          console.log(`Method 1 failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        // Fall through to method 2
       }
       
-      // If parsing fails, return the default
+      // Method 2: Use docker ps directly with container name pattern
+      try {
+        const containerName = `${path.basename(projectPath)}-wordpress-1`;
+        if (this.flags.debug) {
+          console.log(`Trying container name: ${containerName}`);
+          console.log(`Project path: ${projectPath}`);
+        }
+        const { stdout } = await execa('docker', ['port', containerName, '80']);
+        
+        // Output should be like "0.0.0.0:8097"
+        if (this.flags.debug) {
+          console.log(`Docker port output: ${stdout}`);
+        }
+        const match = stdout.match(/0\.0\.0\.0:(\d+)/);
+        if (match && match[1]) {
+          if (this.flags.debug) {
+            console.log(`Extracted port from docker port: ${match[1]}`);
+          }
+          return Number.parseInt(match[1], 10);
+        }
+      } catch (error) {
+        if (this.flags.debug) {
+          console.log(`Method 2 failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        // Fall through to method 3
+      }
+      
+      // Method 3: Use docker inspect to get port mapping
+      try {
+        const containerName = `${path.basename(projectPath)}-wordpress-1`;
+        const { stdout } = await execa('docker', ['inspect', containerName, '--format', '{{json .NetworkSettings.Ports}}']);
+        
+        const ports = JSON.parse(stdout);
+        const port80 = ports['80/tcp'];
+        if (port80 && port80[0] && port80[0].HostPort) {
+          return Number.parseInt(port80[0].HostPort, 10);
+        }
+      } catch (error) {
+        if (this.flags.debug) {
+          console.log(`Method 3 failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        // Fall through to default
+      }
+      
+      // If all methods fail, return the default
       return defaultPort;
     } catch (error) {
       // Log error? Maybe only in debug mode.
