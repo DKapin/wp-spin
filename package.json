@@ -62,6 +62,7 @@
     "bin",
     "dist",
     "oclif.manifest.json",
+    "scripts",
     "README.md",
     "LICENSE"
   ],
