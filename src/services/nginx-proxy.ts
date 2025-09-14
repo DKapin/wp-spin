@@ -77,6 +77,9 @@ http {
     const hostKeyPath = join(this.certsDir, `${domain}-key.pem`);
     if (!fs.existsSync(hostCertPath) || !fs.existsSync(hostKeyPath)) {
       try {
+        // Ensure mkcert CA is installed before generating certificates
+        await this.ensureMkcertCAInstalled();
+        
         // Run mkcert to generate cert and key in the host certs dir
         await execa('mkcert', ['-cert-file', hostCertPath, '-key-file', hostKeyPath, domain], { stdio: 'inherit' });
       } catch {
@@ -337,6 +340,28 @@ http {
     return false;
   }
 
+  private async containerNeedsRecreation(): Promise<boolean> {
+    try {
+      // Get the container's mount information
+      const mountInfo = execSync(`docker inspect ${this.containerName} --format "{{range .Mounts}}{{.Source}}:{{.Destination}}{{'\\n'}}{{end}}"`, { encoding: 'utf8' });
+      
+      // Get the expected mount paths for current platform
+      const expectedConfigMount = `${this.configDir}/conf.d:/etc/nginx/conf.d`;
+      const expectedCertsMount = `${this.certsDir}:/etc/nginx/certs`;
+      
+      // Check if current mounts match expected paths
+      const hasCorrectConfigMount = mountInfo.includes(expectedConfigMount);
+      const hasCorrectCertsMount = mountInfo.includes(expectedCertsMount);
+      
+      // Container needs recreation if mounts don't match current filesystem paths
+      return !hasCorrectConfigMount || !hasCorrectCertsMount;
+    } catch (error) {
+      // If we can't inspect the container, assume it needs recreation
+      console.warn(`⚠️  Could not inspect container mounts: ${error instanceof Error ? error.message : String(error)}`);
+      return true;
+    }
+  }
+
   private createCertsDirUnix(): void {
     try {
       fs.mkdirSync(this.certsDir, { recursive: true });
@@ -352,6 +377,17 @@ http {
     const group = this.getSystemGroup(username);
 
     execSync(`sudo chown -R ${username}:${group} ${this.certsDir}`, { stdio: 'inherit' });
+  }
+
+  private createContainer(): void {
+    // Start the container with ports 80 and 443 exposed, and mount certs
+    execSync(`docker run -d --name ${this.containerName} \
+      -p 80:80 -p 443:443 \
+      -v ${this.configDir}/nginx.conf:/etc/nginx/nginx.conf:ro \
+      -v ${this.configDir}/conf.d:/etc/nginx/conf.d:ro \
+      -v ${this.certsDir}:/etc/nginx/certs:ro \
+      --add-host=host.docker.internal:host-gateway \
+      nginx:stable`, { stdio: 'inherit' });
   }
 
   private ensureCertsDir(): void {
@@ -466,22 +502,46 @@ http {
       const containerExists = execSync(`docker ps -a --filter "name=${this.containerName}" --format "{{.Names}}"`, { encoding: 'utf8' }).trim() === this.containerName;
       
       if (containerExists) {
-        const isRunning = execSync(`docker ps --filter "name=${this.containerName}" --format "{{.Names}}"`, { encoding: 'utf8' }).trim() === this.containerName;
-        if (!isRunning) {
-          execSync(`docker start ${this.containerName}`, { stdio: 'inherit' });
+        // Check if container mounts match current platform's filesystem paths
+        const needsRecreation = await this.containerNeedsRecreation();
+        
+        if (needsRecreation) {
+          console.log('🔄 Detected cross-platform filesystem change. Recreating nginx container with correct mounts...');
+          execSync(`docker stop ${this.containerName} && docker rm ${this.containerName}`, { stdio: 'pipe' });
+          this.createContainer();
+        } else {
+          const isRunning = execSync(`docker ps --filter "name=${this.containerName}" --format "{{.Names}}"`, { encoding: 'utf8' }).trim() === this.containerName;
+          if (!isRunning) {
+            execSync(`docker start ${this.containerName}`, { stdio: 'inherit' });
+          }
         }
       } else {
-        // Start the container with ports 80 and 443 exposed, and mount certs
-        execSync(`docker run -d --name ${this.containerName} \
-          -p 80:80 -p 443:443 \
-          -v ${this.configDir}/nginx.conf:/etc/nginx/nginx.conf:ro \
-          -v ${this.configDir}/conf.d:/etc/nginx/conf.d:ro \
-          -v ${this.certsDir}:/etc/nginx/certs:ro \
-          --add-host=host.docker.internal:host-gateway \
-          nginx:stable`, { stdio: 'inherit' });
+        this.createContainer();
       }
     } catch (error) {
       throw new Error(`Failed to ensure NGINX container is running: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async ensureMkcertCAInstalled(): Promise<void> {
+    try {
+      // Check if CA is already installed by trying to get the CAROOT
+      await execa('mkcert', ['-CAROOT'], { stdio: 'pipe' });
+      
+      // Check if the CA certificates exist in the system store
+      // This will throw if the CA is not installed
+      await execa('mkcert', ['-check-ca'], { stdio: 'pipe' });
+    } catch {
+      try {
+        // CA not installed, install it automatically
+        console.log('🔒 Installing mkcert certificate authority for trusted SSL certificates...');
+        await execa('mkcert', ['-install'], { stdio: 'inherit' });
+        console.log('✓ mkcert CA installed successfully! SSL certificates will now be trusted by browsers.');
+      } catch (error) {
+        console.warn('⚠️  Failed to install mkcert CA automatically. SSL certificates may not be trusted by browsers.');
+        console.warn('   You can manually run: mkcert -install');
+        console.warn(`   Error: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
   }
 
@@ -760,15 +820,23 @@ ${isWSL ? '💡 Note: You\'re using WSL, so changes must be made to the Windows 
 
   private isRunningInWSL(): boolean {
     try {
-      // Check for WSL indicators
-      if (process.env.WSL_DISTRO_NAME || process.env.WSLENV) {
-        return true;
+      // If we're on Windows platform (win32), we're definitely not in WSL
+      if (process.platform === 'win32') {
+        return false;
       }
       
-      // Check /proc/version for Microsoft
-      if (fs.existsSync('/proc/version')) {
-        const version = fs.readFileSync('/proc/version', 'utf8');
-        return version.toLowerCase().includes('microsoft') || version.toLowerCase().includes('wsl');
+      // Only check WSL indicators on Linux platforms
+      if (process.platform === 'linux') {
+        // Check for WSL indicators
+        if (process.env.WSL_DISTRO_NAME || process.env.WSLENV) {
+          return true;
+        }
+        
+        // Check /proc/version for Microsoft/WSL
+        if (fs.existsSync('/proc/version')) {
+          const version = fs.readFileSync('/proc/version', 'utf8');
+          return version.toLowerCase().includes('microsoft') || version.toLowerCase().includes('wsl');
+        }
       }
       
       return false;
