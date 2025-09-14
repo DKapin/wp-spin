@@ -1,6 +1,6 @@
 # wp-spin
 
-A CLI tool for managing Docker-based WordPress environments with ease. Quickly spin up local WordPress development environments with Docker. Manage development, themes, plugins, and more.
+A CLI tool for managing Docker-based WordPress environments with ease. Quickly spin up local secure WordPress development environments with Docker. Manage development, themes, plugins, and more.
 
 [![oclif](https://img.shields.io/badge/cli-oclif-brightgreen.svg)](https://oclif.io)
 [![Version](https://img.shields.io/npm/v/wp-spin.svg)](https://npmjs.org/package/wp-spin)
