@@ -376,7 +376,7 @@ EXAMPLES
   $ wp-spin db snapshot list
 ```
 
-_See code: [src/commands/db.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/db.ts)_
+_See code: [src/commands/db.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/db.ts)_
 
 ## `wp-spin hook ACTION`
 
@@ -403,7 +403,7 @@ EXAMPLES
   $ wp-spin hook status
 ```
 
-_See code: [src/commands/hook.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/hook.ts)_
+_See code: [src/commands/hook.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/hook.ts)_
 
 ## `wp-spin logs`
 
@@ -434,7 +434,7 @@ EXAMPLES
   $ wp-spin logs --container=mysql --site=my-wp-site
 ```
 
-_See code: [src/commands/logs.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/logs.ts)_
+_See code: [src/commands/logs.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/logs.ts)_
 
 ## `wp-spin php [VERSION]`
 
@@ -468,7 +468,7 @@ EXAMPLES
   $ wp-spin php --list
 ```
 
-_See code: [src/commands/php.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/php.ts)_
+_See code: [src/commands/php.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/php.ts)_
 
 ## `wp-spin plugin`
 
@@ -497,7 +497,7 @@ EXAMPLES
   $ wp-spin plugin --remove woocommerce
 ```
 
-_See code: [src/commands/plugin.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/plugin.ts)_
+_See code: [src/commands/plugin.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/plugin.ts)_
 
 ## `wp-spin ps`
 
@@ -526,7 +526,7 @@ EXAMPLES
   $ wp-spin ps --site=/path/to/my-site
 ```
 
-_See code: [src/commands/ps.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/ps.ts)_
+_See code: [src/commands/ps.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/ps.ts)_
 
 ## `wp-spin remove`
 
@@ -547,7 +547,7 @@ EXAMPLES
   $ wp-spin remove mysite
 ```
 
-_See code: [src/commands/remove.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/remove.ts)_
+_See code: [src/commands/remove.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/remove.ts)_
 
 ## `wp-spin restart`
 
@@ -571,7 +571,7 @@ EXAMPLES
   $ wp-spin restart
 ```
 
-_See code: [src/commands/restart.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/restart.ts)_
+_See code: [src/commands/restart.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/restart.ts)_
 
 ## `wp-spin share`
 
@@ -601,7 +601,7 @@ EXAMPLES
   $ wp-spin share --domain=mysite.ngrok-free.app
 ```
 
-_See code: [src/commands/share.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/share.ts)_
+_See code: [src/commands/share.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/share.ts)_
 
 ## `wp-spin shell`
 
@@ -632,7 +632,7 @@ EXAMPLES
   $ wp-spin shell --container=mysql --site=my-wp-site
 ```
 
-_See code: [src/commands/shell.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/shell.ts)_
+_See code: [src/commands/shell.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/shell.ts)_
 
 ## `wp-spin sites ACTION [NAME] [PATH]`
 
@@ -660,7 +660,7 @@ EXAMPLES
   $ wp-spin sites update my-site /new/path/to/site
 ```
 
-_See code: [src/commands/sites.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/sites.ts)_
+_See code: [src/commands/sites.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/sites.ts)_
 
 ## `wp-spin start`
 
@@ -684,7 +684,7 @@ DESCRIPTION
   Start a WordPress development environment
 ```
 
-_See code: [src/commands/start.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/start.ts)_
+_See code: [src/commands/start.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/start.ts)_
 
 ## `wp-spin status`
 
@@ -713,7 +713,7 @@ EXAMPLES
   $ wp-spin ps --site=/path/to/my-site
 ```
 
-_See code: [src/commands/status.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/status.ts)_
+_See code: [src/commands/status.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/status.ts)_
 
 ## `wp-spin stop`
 
@@ -736,7 +736,7 @@ EXAMPLES
   $ wp-spin stop --site=./path/to/wordpress
 ```
 
-_See code: [src/commands/stop.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/stop.ts)_
+_See code: [src/commands/stop.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/stop.ts)_
 
 ## `wp-spin theme`
 
@@ -765,7 +765,7 @@ EXAMPLES
   $ wp-spin theme --remove twentytwentyfour
 ```
 
-_See code: [src/commands/theme.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/theme.ts)_
+_See code: [src/commands/theme.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/theme.ts)_
 
 ## `wp-spin unshare`
 
@@ -792,514 +792,7 @@ EXAMPLES
   $ wp-spin unshare --site=my-site
 ```
 
-_See code: [src/commands/unshare.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/unshare.ts)_
-<!-- commandsstop -->
-* [`wp-spin containers`](#wp-spin-containers)
-* [`wp-spin db ACTION [TARGET]`](#wp-spin-db-action-target)
-* [`wp-spin hook ACTION`](#wp-spin-hook-action)
-* [`wp-spin logs`](#wp-spin-logs)
-* [`wp-spin php [VERSION]`](#wp-spin-php-version)
-* [`wp-spin plugin`](#wp-spin-plugin)
-* [`wp-spin ps`](#wp-spin-ps)
-* [`wp-spin remove`](#wp-spin-remove)
-* [`wp-spin restart`](#wp-spin-restart)
-* [`wp-spin share`](#wp-spin-share)
-* [`wp-spin shell`](#wp-spin-shell)
-* [`wp-spin sites ACTION [NAME] [PATH]`](#wp-spin-sites-action-name-path)
-* [`wp-spin start`](#wp-spin-start)
-* [`wp-spin status`](#wp-spin-status)
-* [`wp-spin stop`](#wp-spin-stop)
-* [`wp-spin theme`](#wp-spin-theme)
-* [`wp-spin unshare`](#wp-spin-unshare)
-
-## `wp-spin containers`
-
-Show status of Docker containers for this project
-
-```
-USAGE
-  $ wp-spin containers [-d <value>] [-s <value>]
-
-FLAGS
-  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
-  -s, --site=<value>    Site path or site name
-
-DESCRIPTION
-  Show status of Docker containers for this project
-
-ALIASES
-  $ wp-spin containers
-  $ wp-spin status
-
-EXAMPLES
-  $ wp-spin ps
-
-  $ wp-spin ps --site=my-site
-
-  $ wp-spin ps --site=/path/to/my-site
-```
-
-## `wp-spin db ACTION [TARGET]`
-
-Manage WordPress database operations
-
-```
-USAGE
-  $ wp-spin db ACTION [TARGET] [--exclude-tables <value>] [-f] [--search-replace <value>] [-s <value>]
-    [--skip-themes-plugins] [--skip-url-update]
-
-ARGUMENTS
-  ACTION  (export|import|reset|snapshot) Database action to perform
-  TARGET  Target file for import/export or snapshot name
-
-FLAGS
-  -f, --force                   Force operation without confirmation prompts
-  -s, --site=<value>            Site path or site name to operate on
-      --exclude-tables=<value>  Comma-separated list of tables to exclude from export
-      --search-replace=<value>  Search and replace URLs during import (format: old.com,new.com)
-      --skip-themes-plugins     Skip themes and plugins tables during import
-      --skip-url-update         Skip automatic URL updates during import
-
-DESCRIPTION
-  Manage WordPress database operations
-
-EXAMPLES
-  $ wp-spin db export
-
-  $ wp-spin db export backup.sql
-
-  $ wp-spin db import backup.sql
-
-  $ wp-spin db import backup.sql --search-replace=oldsite.com,newsite.com
-
-  $ wp-spin db import backup.sql --skip-url-update
-
-  $ wp-spin db reset
-
-  $ wp-spin db snapshot create dev-state
-
-  $ wp-spin db snapshot restore dev-state
-
-  $ wp-spin db snapshot list
-```
-
-_See code: [src/commands/db.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/db.ts)_
-
-## `wp-spin hook ACTION`
-
-Manage shell hook for automatic wp-spin cleanup (installed by default)
-
-```
-USAGE
-  $ wp-spin hook ACTION [-f]
-
-ARGUMENTS
-  ACTION  (install|uninstall|status|reset-preferences) Action to perform
-
-FLAGS
-  -f, --force  Force installation even if already installed
-
-DESCRIPTION
-  Manage shell hook for automatic wp-spin cleanup (installed by default)
-
-EXAMPLES
-  $ wp-spin hook install
-
-  $ wp-spin hook uninstall
-
-  $ wp-spin hook status
-```
-
-_See code: [src/commands/hook.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/hook.ts)_
-
-## `wp-spin logs`
-
-View logs from a specific container (wordpress, mysql, or phpmyadmin)
-
-```
-USAGE
-  $ wp-spin logs [-d <value>] [-s <value>] [-c wordpress|mysql|phpmyadmin]
-
-FLAGS
-  -c, --container=<option>  [default: wordpress] Container to target (wordpress, mysql, phpmyadmin)
-                            <options: wordpress|mysql|phpmyadmin>
-  -d, --domain=<value>      Custom domain for the site (e.g., example.test)
-  -s, --site=<value>        Site path or site name
-
-DESCRIPTION
-  View logs from a specific container (wordpress, mysql, or phpmyadmin)
-
-EXAMPLES
-  $ wp-spin logs
-
-  $ wp-spin logs --container=mysql
-
-  $ wp-spin logs --container=phpmyadmin
-
-  $ wp-spin logs --container=wordpress
-
-  $ wp-spin logs --container=mysql --site=my-wp-site
-```
-
-_See code: [src/commands/logs.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/logs.ts)_
-
-## `wp-spin php [VERSION]`
-
-Manage PHP version for WordPress environment
-
-```
-USAGE
-  $ wp-spin php [VERSION] [-d <value>] [-s <value>] [-f] [-l]
-
-ARGUMENTS
-  VERSION  (7.2|7.3|7.4|8.0|8.1|8.2|8.3|8.4) PHP version to switch to
-
-FLAGS
-  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
-  -f, --force           Force PHP version change without confirmation
-  -l, --list            List all available PHP versions
-  -s, --site=<value>    Site path or site name
-
-DESCRIPTION
-  Manage PHP version for WordPress environment
-
-EXAMPLES
-  $ wp-spin php
-
-  $ wp-spin php 8.3
-
-  $ wp-spin php 8.2
-
-  $ wp-spin php 7.4
-
-  $ wp-spin php --list
-```
-
-_See code: [src/commands/php.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/php.ts)_
-
-## `wp-spin plugin`
-
-Manage WordPress plugins
-
-```
-USAGE
-  $ wp-spin plugin [-d <value>] [-s <value>] [-f] [-v <value> [-a <value> | -r <value>]]
-
-FLAGS
-  -a, --add=<value>      Name of the plugin to install
-  -d, --domain=<value>   Custom domain for the site (e.g., example.test)
-  -f, --force            Force operation even if plugin exists/does not exist
-  -r, --remove=<value>   Name of the plugin to remove
-  -s, --site=<value>     Site path or site name
-  -v, --version=<value>  Plugin version to install (only used with --add)
-
-DESCRIPTION
-  Manage WordPress plugins
-
-EXAMPLES
-  $ wp-spin plugin --add woocommerce
-
-  $ wp-spin plugin --add woocommerce --version 8.0.0
-
-  $ wp-spin plugin --remove woocommerce
-```
-
-_See code: [src/commands/plugin.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/plugin.ts)_
-
-## `wp-spin ps`
-
-Show status of Docker containers for this project
-
-```
-USAGE
-  $ wp-spin ps [-d <value>] [-s <value>]
-
-FLAGS
-  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
-  -s, --site=<value>    Site path or site name
-
-DESCRIPTION
-  Show status of Docker containers for this project
-
-ALIASES
-  $ wp-spin containers
-  $ wp-spin status
-
-EXAMPLES
-  $ wp-spin ps
-
-  $ wp-spin ps --site=my-site
-
-  $ wp-spin ps --site=/path/to/my-site
-```
-
-_See code: [src/commands/ps.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/ps.ts)_
-
-## `wp-spin remove`
-
-Remove a WordPress development environment
-
-```
-USAGE
-  $ wp-spin remove [-d <value>] [-s <value>]
-
-FLAGS
-  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
-  -s, --site=<value>    Site path or site name
-
-DESCRIPTION
-  Remove a WordPress development environment
-
-EXAMPLES
-  $ wp-spin remove mysite
-```
-
-_See code: [src/commands/remove.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/remove.ts)_
-
-## `wp-spin restart`
-
-Restart the WordPress environment
-
-```
-USAGE
-  $ wp-spin restart [-d <value>] [-s <value>] [--ide vscode|phpstorm|sublime|vim --xdebug]
-
-FLAGS
-  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
-  -s, --site=<value>    Site path or site name
-      --ide=<option>    IDE to configure for debugging (vscode, phpstorm, sublime, vim)
-                        <options: vscode|phpstorm|sublime|vim>
-      --xdebug          Enable Xdebug for PHP debugging
-
-DESCRIPTION
-  Restart the WordPress environment
-
-EXAMPLES
-  $ wp-spin restart
-```
-
-_See code: [src/commands/restart.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/restart.ts)_
-
-## `wp-spin share`
-
-Share your WordPress site publicly using ngrok
-
-```
-USAGE
-  $ wp-spin share [-d <value>] [-s <value>] [-a <value>] [-A <value>...] [-D <value>...] [-d] [-u] [-p
-    <value>]
-
-FLAGS
-  -A, --cidr-allow=<value>...  Reject connections that do not match the given CIDRs
-  -D, --cidr-deny=<value>...   Reject connections that match the given CIDRs
-  -a, --auth=<value>           ngrok auth token (or use NGROK_AUTH_TOKEN env variable)
-  -d, --debug                  Enable debug mode to see detailed ngrok output
-  -d, --domain=<value>         Custom domain for your ngrok tunnel (requires ngrok account)
-  -p, --port=<value>           Port to expose (defaults to WordPress port from Docker)
-  -s, --site=<value>           Site path or site name
-  -u, --no-fixurl              Skip fixing WordPress site URL for ngrok compatibility
-
-DESCRIPTION
-  Share your WordPress site publicly using ngrok
-
-EXAMPLES
-  $ wp-spin share
-
-  $ wp-spin share --domain=mysite.ngrok-free.app
-```
-
-_See code: [src/commands/share.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/share.ts)_
-
-## `wp-spin shell`
-
-Open a shell in a specific container (wordpress, mysql, or phpmyadmin)
-
-```
-USAGE
-  $ wp-spin shell [-d <value>] [-s <value>] [-c wordpress|mysql|phpmyadmin]
-
-FLAGS
-  -c, --container=<option>  [default: wordpress] Container to target (wordpress, mysql, phpmyadmin)
-                            <options: wordpress|mysql|phpmyadmin>
-  -d, --domain=<value>      Custom domain for the site (e.g., example.test)
-  -s, --site=<value>        Site path or site name
-
-DESCRIPTION
-  Open a shell in a specific container (wordpress, mysql, or phpmyadmin)
-
-EXAMPLES
-  $ wp-spin shell
-
-  $ wp-spin shell --container=mysql
-
-  $ wp-spin shell --container=phpmyadmin
-
-  $ wp-spin shell --container=wordpress
-
-  $ wp-spin shell --container=mysql --site=my-wp-site
-```
-
-_See code: [src/commands/shell.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/shell.ts)_
-
-## `wp-spin sites ACTION [NAME] [PATH]`
-
-Manage WordPress site aliases
-
-```
-USAGE
-  $ wp-spin sites ACTION [NAME] [PATH]
-
-ARGUMENTS
-  ACTION  (list|name|update|remove) Action to perform: list, name, update, remove
-  NAME    Site name/alias
-  PATH    Site path (for name/update actions)
-
-DESCRIPTION
-  Manage WordPress site aliases
-
-EXAMPLES
-  $ wp-spin sites list
-
-  $ wp-spin sites name my-site ./path/to/site
-
-  $ wp-spin sites remove my-site
-
-  $ wp-spin sites update my-site /new/path/to/site
-```
-
-_See code: [src/commands/sites.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/sites.ts)_
-
-## `wp-spin start`
-
-Start a WordPress development environment
-
-```
-USAGE
-  $ wp-spin start [-d <value>] [-s <value>] [--ide vscode|phpstorm|sublime|vim --xdebug] [-p <value>]
-    [--ssl]
-
-FLAGS
-  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
-  -p, --port=<value>    Port to run WordPress on (if not specified, an available port will be found)
-  -s, --site=<value>    Site path or site name
-      --ide=<option>    IDE to configure for debugging (vscode, phpstorm, sublime, vim)
-                        <options: vscode|phpstorm|sublime|vim>
-      --ssl             Enable SSL for custom domain
-      --xdebug          Enable Xdebug for PHP debugging
-
-DESCRIPTION
-  Start a WordPress development environment
-```
-
-_See code: [src/commands/start.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/start.ts)_
-
-## `wp-spin status`
-
-Show status of Docker containers for this project
-
-```
-USAGE
-  $ wp-spin status [-d <value>] [-s <value>]
-
-FLAGS
-  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
-  -s, --site=<value>    Site path or site name
-
-DESCRIPTION
-  Show status of Docker containers for this project
-
-ALIASES
-  $ wp-spin containers
-  $ wp-spin status
-
-EXAMPLES
-  $ wp-spin ps
-
-  $ wp-spin ps --site=my-site
-
-  $ wp-spin ps --site=/path/to/my-site
-```
-
-_See code: [src/commands/status.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/status.ts)_
-
-## `wp-spin stop`
-
-Stop the WordPress environment
-
-```
-USAGE
-  $ wp-spin stop [-d <value>] [-s <value>]
-
-FLAGS
-  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
-  -s, --site=<value>    Site path or site name
-
-DESCRIPTION
-  Stop the WordPress environment
-
-EXAMPLES
-  $ wp-spin stop
-
-  $ wp-spin stop --site=./path/to/wordpress
-```
-
-_See code: [src/commands/stop.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/stop.ts)_
-
-## `wp-spin theme`
-
-Manage WordPress themes
-
-```
-USAGE
-  $ wp-spin theme [-d <value>] [-s <value>] [-f] [-v <value> [-a <value> | -r <value>]]
-
-FLAGS
-  -a, --add=<value>      Name of the theme to install
-  -d, --domain=<value>   Custom domain for the site (e.g., example.test)
-  -f, --force            Force operation even if theme exists/does not exist
-  -r, --remove=<value>   Name of the theme to remove
-  -s, --site=<value>     Site path or site name
-  -v, --version=<value>  Theme version to install (only used with --add)
-
-DESCRIPTION
-  Manage WordPress themes
-
-EXAMPLES
-  $ wp-spin theme --add twentytwentyfour
-
-  $ wp-spin theme --add twentytwentyfour --version 1.0.0
-
-  $ wp-spin theme --remove twentytwentyfour
-```
-
-_See code: [src/commands/theme.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/theme.ts)_
-
-## `wp-spin unshare`
-
-Stop sharing your WordPress site through ngrok
-
-```
-USAGE
-  $ wp-spin unshare [-d <value>] [-s <value>] [-d] [-f]
-
-FLAGS
-  -d, --debug           Show debugging information
-  -d, --domain=<value>  Custom domain for the site (e.g., example.test)
-  -f, --force           Force kill ngrok processes without restoring WordPress configuration
-  -s, --site=<value>    Site path or site name
-
-DESCRIPTION
-  Stop sharing your WordPress site through ngrok
-
-EXAMPLES
-  $ wp-spin unshare
-
-  $ wp-spin unshare --force
-
-  $ wp-spin unshare --site=my-site
-```
-
-_See code: [src/commands/unshare.ts](https://github.com/DKapin/wp-spin/blob/v0.11.18/src/commands/unshare.ts)_
+_See code: [src/commands/unshare.ts](https://github.com/DKapin/wp-spin/blob/v0.11.19/src/commands/unshare.ts)_
 <!-- commandsstop -->
 
 ## Development Workflow
