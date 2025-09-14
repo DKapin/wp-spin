@@ -243,19 +243,37 @@ http {
 
   private addWindowsHostsEntry(hostsFile: string, hostsEntry: string): void {
     try {
-      // Try direct file append first
+      // Try direct file append first (will only work if already running as admin)
       fs.appendFileSync(hostsFile, `\n${hostsEntry}`);
     } catch {
-      // Try using PowerShell with elevated privileges
+      // Try using PowerShell with elevated privileges (UAC prompt)
       try {
-        const powershellCommand = `powershell -Command "Add-Content -Path '${hostsFile}' -Value '${hostsEntry}'"`;
+        const powershellCommand = 
+          `powershell -Command "Start-Process powershell ` +
+          `-ArgumentList '-Command', 'Add-Content -Path ''${hostsFile}'' -Value ''${hostsEntry}''' ` +
+          `-Verb RunAs -Wait"`;
         execSync(powershellCommand, { stdio: 'pipe' });
       } catch {
-        // Try using echo command
+        // Fallback: Try PowerShell without explicit elevation (user might have admin terminal)
         try {
-          execSync(`echo ${hostsEntry} >> "${hostsFile}"`, { stdio: 'pipe' });
+          const fallbackCommand = `powershell -Command "Add-Content -Path '${hostsFile}' -Value '${hostsEntry}'"`;
+          execSync(fallbackCommand, { stdio: 'pipe' });
         } catch {
-          throw new Error('All Windows hosts file update methods failed');
+          // Try using echo command as final fallback
+          try {
+            execSync(`echo ${hostsEntry} >> "${hostsFile}"`, { stdio: 'pipe' });
+          } catch {
+            // Provide helpful instructions instead of throwing error
+            console.warn(`⚠️  Could not automatically update Windows hosts file.`);
+            console.warn(`   To access your site at the custom domain, please add this entry manually:`);
+            console.warn(`   
+   1. Open PowerShell as Administrator (right-click → "Run as administrator")
+   2. Run: Add-Content -Path "${hostsFile}" -Value "${hostsEntry}"
+   
+   OR manually edit ${hostsFile} and add:
+   ${hostsEntry}`);
+            // Don't throw error, just warn and continue
+          }
         }
       }
     }
