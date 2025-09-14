@@ -6,7 +6,6 @@ import fs from 'fs-extra';
 import { createPromptModule } from 'inquirer';
 import { execSync } from 'node:child_process';
 import crypto from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
 import net from 'node:net';
 import { arch, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -265,6 +264,52 @@ export default class Init extends BaseCommand {
     }
     // No default
     }
+  }
+  
+  private async configureMailHog(containerName: string, siteName: string): Promise<void> {
+    console.log('Configuring WordPress to use MailHog for local email testing...');
+
+    try {
+      execSync(
+        `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp plugin install wp-mail-smtp --activate --allow-root"`,
+        { stdio: 'inherit' }
+      );
+    } catch {
+      console.log('Plugin download failed, trying direct download...');
+      execSync(
+        `docker exec ${containerName} sh -c "cd /var/www/html && curl -k -L -o wp-mail-smtp.zip https://downloads.wordpress.org/plugin/wp-mail-smtp.zip && unzip wp-mail-smtp.zip -d wp-content/plugins/ && rm wp-mail-smtp.zip && php -d memory_limit=512M /usr/local/bin/wp plugin activate wp-mail-smtp --allow-root"`,
+        { stdio: 'inherit' }
+      );
+    }
+
+    const mailhogSmtpPort = 1025;
+    /* eslint-disable camelcase */
+    const wpMailSmtpConfig = {
+      mail: {
+        from_email: 'admin@example.com',
+        from_name: siteName,
+        mailer: 'smtp',
+        return_path: true
+      },
+      smtp: {
+        auth: false,
+        autotls: false,
+        encryption: 'none',
+        host: 'mailhog',
+        pass: '',
+        port: mailhogSmtpPort,
+        user: ''
+      }
+    };
+    /* eslint-enable camelcase */
+
+    const configJson = JSON.stringify(wpMailSmtpConfig).replaceAll('"', String.raw`\"`);
+    execSync(
+      `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update wp_mail_smtp '${configJson}' --format=json --allow-root"`,
+      { stdio: 'inherit' }
+    );
+
+    console.log('MailHog email configuration completed successfully!');
   }
   
   /**
@@ -570,6 +615,130 @@ FLUSH PRIVILEGES;
       await fs.chmod(join(mysqlDir, 'init.sql'), 0o600);
     }
   }
+
+  private async createMultisiteConfig(containerName: string, siteName: string, flags: Record<string, unknown>): Promise<void> {
+    const protocol = flags.ssl ? 'https' : 'http';
+    const sslConfig = flags.domain ? `
+// Added by wp-spin for proxy support - MUST be at the top
+if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+    $_SERVER['HTTPS'] = 'on';
+    $_SERVER['SERVER_PORT'] = 443;
+}
+` : '';
+
+    const domainConfig = flags.domain ? `
+// Force WordPress to use the correct URL and protocol
+define('WP_HOME', '${protocol}://${flags.domain}');
+define('WP_SITEURL', '${protocol}://${flags.domain}');
+
+${flags.ssl ? "// Force HTTPS for admin and login pages\ndefine('FORCE_SSL_ADMIN', true);\n" : ""}
+// Ensure WordPress generates correct URLs for assets
+if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+    define('WP_CONTENT_URL', '${protocol}://${flags.domain}/wp-content');
+    define('WP_PLUGIN_URL', '${protocol}://${flags.domain}/wp-content/plugins');
+}
+` : '';
+
+    const multisiteConfigContent = `<?php${sslConfig}
+define( 'DB_NAME', 'wordpress' );
+define( 'DB_USER', 'wordpress' );
+define( 'DB_PASSWORD', 'wordpress' );
+define( 'DB_HOST', 'mysql' );
+define( 'DB_CHARSET', 'utf8' );
+define( 'DB_COLLATE', '' );
+
+define( 'WP_DEBUG', true );
+define( 'WP_DEBUG_LOG', true );
+define( 'WP_DEBUG_DISPLAY', true );
+${domainConfig}
+// Multisite configuration
+define( 'WP_ALLOW_MULTISITE', true );
+define( 'MULTISITE', true );
+define( 'SUBDOMAIN_INSTALL', ${flags['multisite-type'] === 'subdomain' ? 'true' : 'false'} );
+define( 'DOMAIN_CURRENT_SITE', '${flags.domain}' );
+define( 'PATH_CURRENT_SITE', '/' );
+define( 'SITE_ID_CURRENT_SITE', 1 );
+define( 'BLOG_ID_CURRENT_SITE', 1 );
+
+$table_prefix = 'wp_';
+
+if ( ! defined( 'ABSPATH' ) ) {
+    define( 'ABSPATH', __DIR__ . '/' );
+}
+
+require_once ABSPATH . 'wp-settings.php';`;
+
+    const tempMultisiteConfigPath = join(tmpdir(), 'wp-config-multisite.php');
+    fs.writeFileSync(tempMultisiteConfigPath, multisiteConfigContent);
+    execSync(
+      `docker cp ${tempMultisiteConfigPath} ${containerName}:/var/www/html/wp-config.php`,
+      { stdio: 'inherit' }
+    );
+    fs.unlinkSync(tempMultisiteConfigPath);
+  }
+  
+  private async createWpConfig(containerName: string, flags: Record<string, unknown>): Promise<void> {
+    try {
+      execSync(
+        `docker exec ${containerName} test -f /var/www/html/wp-config.php && docker exec ${containerName} rm /var/www/html/wp-config.php`,
+        { stdio: 'ignore' }
+      );
+    } catch {
+      // Ignore errors - file doesn't exist or couldn't be removed
+    }
+
+    const protocol = flags.ssl ? 'https' : 'http';
+    const sslConfig = flags.domain ? `
+// Added by wp-spin for proxy support - MUST be at the top
+if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+    $_SERVER['HTTPS'] = 'on';
+    $_SERVER['SERVER_PORT'] = 443;
+}
+` : '';
+
+    const domainConfig = flags.domain ? `
+// Force WordPress to use the correct URL and protocol
+define('WP_HOME', '${protocol}://${flags.domain}');
+define('WP_SITEURL', '${protocol}://${flags.domain}');
+
+${flags.ssl ? "// Force HTTPS for admin and login pages\ndefine('FORCE_SSL_ADMIN', true);\n" : ""}
+// Ensure WordPress generates correct URLs for assets
+if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+    define('WP_CONTENT_URL', '${protocol}://${flags.domain}/wp-content');
+    define('WP_PLUGIN_URL', '${protocol}://${flags.domain}/wp-content/plugins');
+}
+` : '';
+
+    const configContent = `<?php${sslConfig}
+define( 'DB_NAME', 'wordpress' );
+define( 'DB_USER', 'wordpress' );
+define( 'DB_PASSWORD', 'wordpress' );
+define( 'DB_HOST', 'mysql' );
+define( 'DB_CHARSET', 'utf8' );
+define( 'DB_COLLATE', '' );
+
+define( 'WP_DEBUG', true );
+define( 'WP_DEBUG_LOG', true );
+define( 'WP_DEBUG_DISPLAY', true );
+${domainConfig}
+$table_prefix = 'wp_';
+
+if ( ! defined( 'ABSPATH' ) ) {
+    define( 'ABSPATH', __DIR__ . '/' );
+}
+
+require_once ABSPATH . 'wp-settings.php';`;
+
+    const tempConfigPath = join(tmpdir(), 'wp-config.php');
+    fs.writeFileSync(tempConfigPath, configContent);
+
+    execSync(
+      `docker cp ${tempConfigPath} ${containerName}:/var/www/html/wp-config.php`,
+      { stdio: 'inherit' }
+    );
+
+    fs.unlinkSync(tempConfigPath);
+  }
   
   /**
    * Displays information about the WordPress project after initialization
@@ -594,40 +763,6 @@ FLUSH PRIVILEGES;
       this.log(`  ${chalk.cyan(`${protocol}://localhost:${port}/wp-admin`)}`);
     }
 
-    // Show hosts file warning for custom domains
-    if (flags.domain && !flags.domain.toString().includes('localhost')) {
-      this.log('');
-      this.log(chalk.yellow('⚠️  Failed to update hosts file automatically. Please add this entry manually:'));
-      this.log(chalk.cyan(`   127.0.0.1 ${flags.domain}`));
-      this.log('');
-      this.log(chalk.gray('To add it manually:'));
-      
-      // Check for WSL2 environment
-      const isWSL = process.env.WSL_DISTRO_NAME || process.env.WSLENV || existsSync('/proc/version') && readFileSync('/proc/version', 'utf8').includes('microsoft');
-      
-      if (process.platform === 'win32') {
-        this.log(chalk.gray('1. Open Command Prompt as Administrator'));
-        this.log(chalk.gray(String.raw`2. Run: notepad C:\Windows\System32\drivers\etc\hosts`));
-        this.log(chalk.gray(`3. Add this line at the end: 127.0.0.1 ${flags.domain}`));
-        this.log(chalk.gray('4. Save and close the file'));
-      } else if (isWSL) {
-        this.log(chalk.yellow('(WSL2 detected - you need to edit the Windows hosts file, not the Linux one)'));
-        this.log(chalk.gray('1. Open Windows File Explorer'));
-        this.log(chalk.gray('2. Navigate to: C:\\Windows\\System32\\drivers\\etc\\'));
-        this.log(chalk.gray('3. Right-click "hosts" file → "Open with" → "Notepad"'));
-        this.log(chalk.gray('4. When prompted, choose "Run as administrator"'));
-        this.log(chalk.gray(`5. Add this line at the end: 127.0.0.1 ${flags.domain}`));
-        this.log(chalk.gray('6. Save and close the file'));
-        this.log(chalk.gray(''));
-        this.log(chalk.gray('Alternative (from Windows PowerShell as Administrator):'));
-        this.log(chalk.gray(`   Add-Content -Path "C:\\Windows\\System32\\drivers\\etc\\hosts" -Value "127.0.0.1 ${flags.domain}"`));
-      } else {
-        this.log(chalk.gray('1. Open terminal'));
-        this.log(chalk.gray('2. Run: sudo nano /etc/hosts'));
-        this.log(chalk.gray(`3. Add this line at the end: 127.0.0.1 ${flags.domain}`));
-        this.log(chalk.gray('4. Save and close the file'));
-      }
-    }
 
     this.log(`\nDefault credentials:`);
     this.log(`  Username: ${chalk.cyan('admin')}`);
@@ -644,7 +779,44 @@ FLUSH PRIVILEGES;
       this.log(`  ${chalk.gray('All emails sent from WordPress will be captured by MailHog for testing')}`);
     }
   }
+  
+  private async downloadWordPressCore(containerName: string): Promise<void> {
+    try {
+      execSync(
+        `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core download --force --allow-root"`,
+        { stdio: 'inherit' }
+      );
+    } catch {
+      console.log('WordPress download failed, trying direct download...');
+      execSync(
+        `docker exec ${containerName} sh -c "cd /var/www/html && curl -k -L -O https://wordpress.org/latest.tar.gz && tar -xzf latest.tar.gz --strip-components=1 && rm latest.tar.gz"`,
+        { stdio: 'inherit' }
+      );
+    }
+  }
 
+  private async finalizeInstallation(containerName: string): Promise<void> {
+    execSync(
+      `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp cache flush --allow-root"`,
+      { stdio: 'inherit' }
+    );
+
+    execSync(
+      `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html"`,
+      { stdio: 'inherit' }
+    );
+
+    execSync(
+      `docker exec ${containerName} sh -c "find /var/www/html -type d -exec chmod 755 {} +"`,
+      { stdio: 'inherit' }
+    );
+
+    execSync(
+      `docker exec ${containerName} sh -c "find /var/www/html -type f -exec chmod 644 {} +"`,
+      { stdio: 'inherit' }
+    );
+  }
+  
   private async findAvailablePort(startPort: number, usedPorts: Set<number>): Promise<number> {
     const batchSize = 10;
     
@@ -668,7 +840,7 @@ FLUSH PRIVILEGES;
     
     return checkBatch(startPort);
   }
-  
+
   /**
    * Fix critical WordPress files for Docker compatibility
    */
@@ -711,7 +883,7 @@ FLUSH PRIVILEGES;
       console.error('Error:', error);
     }
   }
-  
+
   /**
    * Fix nested WordPress directory structure (when WordPress is in a subdirectory)
    */
@@ -775,7 +947,7 @@ FLUSH PRIVILEGES;
     // Wait for all directory processing to complete
     await Promise.all(processDirectoryPromises);
   }
-  
+
   /**
    * Generate a secure random password
    */
@@ -882,7 +1054,7 @@ FLUSH PRIVILEGES;
     flags = { ...flags, ...interactiveAnswers };
     return { args, flags };
   }
-  
+
   /**
    * Handle local WordPress source (from current directory)
    */
@@ -926,327 +1098,50 @@ FLUSH PRIVILEGES;
     );
   }
 
+  private async installDefaultTheme(containerName: string): Promise<void> {
+    execSync(
+      `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp theme install twentytwentyfour --activate --allow-root"`,
+      { stdio: 'inherit' }
+    );
+  }
+
   private async installWordPress(siteName: string, _version: string, flags: Record<string, unknown>): Promise<void> {
     try {
-      // Get the correct container name from the base class method
       const containerNames = this.getContainerNames();
       const containerName = containerNames.wordpress;
 
-      // Install WP-CLI properly for the container architecture
-      execSync(
-        `docker exec ${containerName} sh -c "curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && chmod +x wp-cli.phar && mv wp-cli.phar /usr/local/bin/wp && wp --info"`,
-        { stdio: 'inherit' }
-      );
+      await this.setupWpCli(containerName);
+      await this.setupPermissions(containerName);
+      await this.createWpConfig(containerName, flags);
+      await this.setupPhpConfig(containerName);
+      await this.downloadWordPressCore(containerName);
+      await this.installWordPressCore(containerName, siteName, flags);
+      await this.updateSiteUrls(containerName, flags);
+      await this.installDefaultTheme(containerName);
 
-      // Set permissions on existing directories (ignore errors if they don't exist)
-      execSync(
-        `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html 2>/dev/null || true"`,
-        { stdio: 'inherit' }
-      );
-
-      // Ensure wp-content and its subdirectories exist with correct permissions
-      const subdirs = ['themes', 'plugins', 'uploads', 'upgrade'];
-      for (const dir of subdirs) {
-        execSync(
-          `docker exec ${containerName} sh -c "mkdir -p /var/www/html/wp-content/${dir} 2>/dev/null || true && chown www-data:www-data /var/www/html/wp-content/${dir} 2>/dev/null || true"`,
-          { stdio: 'inherit' }
-        );
-      }
-
-      // Set final permissions (ignore errors)
-      execSync(
-        `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html 2>/dev/null || true"`,
-        { stdio: 'inherit' }
-      );
-      
-      // Set directory permissions
-      execSync(
-        `docker exec ${containerName} sh -c "find /var/www/html -type d -exec chmod 755 {} + 2>/dev/null || true"`,
-        { stdio: 'inherit' }
-      );
-      
-      // Set file permissions
-      execSync(
-        `docker exec ${containerName} sh -c "find /var/www/html -type f -exec chmod 644 {} + 2>/dev/null || true"`,
-        { stdio: 'inherit' }
-      );
-
-      // Check if wp-config.php exists and remove it if it does
-      try {
-        execSync(
-          `docker exec ${containerName} test -f /var/www/html/wp-config.php && docker exec ${containerName} rm /var/www/html/wp-config.php`,
-          { stdio: 'ignore' }
-        );
-      } catch {
-        // Ignore errors - file doesn't exist or couldn't be removed
-      }
-
-      // Create wp-config.php with debug settings and SSL support
-      const protocol = flags.ssl ? 'https' : 'http';
-      const sslConfig = flags.domain ? `
-// Added by wp-spin for proxy support - MUST be at the top
-if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
-    $_SERVER['HTTPS'] = 'on';
-    $_SERVER['SERVER_PORT'] = 443;
-}
-` : '';
-
-      const domainConfig = flags.domain ? `
-// Force WordPress to use the correct URL and protocol
-define('WP_HOME', '${protocol}://${flags.domain}');
-define('WP_SITEURL', '${protocol}://${flags.domain}');
-
-${flags.ssl ? "// Force HTTPS for admin and login pages\ndefine('FORCE_SSL_ADMIN', true);\n" : ""}
-// Ensure WordPress generates correct URLs for assets
-if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
-    define('WP_CONTENT_URL', '${protocol}://${flags.domain}/wp-content');
-    define('WP_PLUGIN_URL', '${protocol}://${flags.domain}/wp-content/plugins');
-}
-` : '';
-
-      const configContent = `<?php${sslConfig}
-define( 'DB_NAME', 'wordpress' );
-define( 'DB_USER', 'wordpress' );
-define( 'DB_PASSWORD', 'wordpress' );
-define( 'DB_HOST', 'mysql' );
-define( 'DB_CHARSET', 'utf8' );
-define( 'DB_COLLATE', '' );
-
-define( 'WP_DEBUG', true );
-define( 'WP_DEBUG_LOG', true );
-define( 'WP_DEBUG_DISPLAY', true );
-${domainConfig}
-$table_prefix = 'wp_';
-
-if ( ! defined( 'ABSPATH' ) ) {
-    define( 'ABSPATH', __DIR__ . '/' );
-}
-
-require_once ABSPATH . 'wp-settings.php';`;
-
-      // Write config to a temporary file
-      const tempConfigPath = join(tmpdir(), 'wp-config.php');
-      fs.writeFileSync(tempConfigPath, configContent);
-
-      // Copy the config file into the container
-      execSync(
-        `docker cp ${tempConfigPath} ${containerName}:/var/www/html/wp-config.php`,
-        { stdio: 'inherit' }
-      );
-
-      // Clean up the temporary file
-      fs.unlinkSync(tempConfigPath);
-
-      // Create a PHP configuration file to increase memory limit
-      const phpConfigContent = `memory_limit = 512M
-max_execution_time = 300
-post_max_size = 64M
-upload_max_filesize = 64M`;
-
-      const tempPhpConfigPath = join(tmpdir(), 'php.ini');
-      fs.writeFileSync(tempPhpConfigPath, phpConfigContent);
-
-      // Copy PHP config into container
-      execSync(
-        `docker cp ${tempPhpConfigPath} ${containerName}:/usr/local/etc/php/conf.d/custom.ini`,
-        { stdio: 'inherit' }
-      );
-
-      // Clean up the temporary PHP config file
-      fs.unlinkSync(tempPhpConfigPath);
-
-      // Restart PHP-FPM to apply new settings
-      execSync(
-        `docker exec ${containerName} sh -c "kill -USR2 1"`,
-        { stdio: 'inherit' }
-      );
-
-      // Ensure WordPress core files are present
-      try {
-        execSync(
-          `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core download --force --allow-root"`,
-          { stdio: 'inherit' }
-        );
-      } catch {
-        // Fallback: download WordPress directly with curl to bypass SSL issues
-        console.log('WordPress download failed, trying direct download...');
-        execSync(
-          `docker exec ${containerName} sh -c "cd /var/www/html && curl -k -L -O https://wordpress.org/latest.tar.gz && tar -xzf latest.tar.gz --strip-components=1 && rm latest.tar.gz"`,
-          { stdio: 'inherit' }
-        );
-      }
-
-      // Install WordPress using WP-CLI with the correct URL
-      const installUrl = flags.domain 
-        ? `${flags.ssl ? 'https' : 'http'}://${flags.domain}`
-        : `http://localhost:${flags.port}`;
-      
-      execSync(
-        `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core install --url='${installUrl}' --title='${siteName}' --admin_user=admin --admin_password=password --admin_email=admin@example.com --allow-root 2>&1 | grep -v 'sendmail: not found'"`,
-        { stdio: 'inherit' }
-      );
-
-      // Update site URLs - skip if domain is specified (already set in wp-config.php)
-      if (flags.domain === undefined) {
-        // Only update URLs to localhost if no custom domain is specified
-        execSync(
-          `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update home 'http://localhost:${flags.port}' --allow-root"`,
-          { stdio: 'inherit' }
-        );
-        execSync(
-          `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update siteurl 'http://localhost:${flags.port}' --allow-root"`,
-          { stdio: 'inherit' }
-        );
-      } else {
-        // URLs are already set via wp-config.php constants, no need to update via WP-CLI
-        const protocol = flags.ssl ? 'https' : 'http';
-        this.logDebug(`URLs already configured in wp-config.php as: ${protocol}://${flags.domain}`);
-      }
-
-      // Install and activate a default theme
-      execSync(
-        `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp theme install twentytwentyfour --activate --allow-root"`,
-        { stdio: 'inherit' }
-      );
-
-      // Configure WordPress to use MailHog for email (if enabled)
       if (flags.mailhog) {
-        console.log('Configuring WordPress to use MailHog for local email testing...');
-        
-        // Install and configure wp-mail-smtp plugin for MailHog
-        try {
-          execSync(
-            `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp plugin install wp-mail-smtp --activate --allow-root"`,
-            { stdio: 'inherit' }
-          );
-        } catch {
-          // Fallback: download plugin directly with curl to bypass SSL issues
-          console.log('Plugin download failed, trying direct download...');
-          execSync(
-            `docker exec ${containerName} sh -c "cd /var/www/html && curl -k -L -o wp-mail-smtp.zip https://downloads.wordpress.org/plugin/wp-mail-smtp.zip && unzip wp-mail-smtp.zip -d wp-content/plugins/ && rm wp-mail-smtp.zip && php -d memory_limit=512M /usr/local/bin/wp plugin activate wp-mail-smtp --allow-root"`,
-            { stdio: 'inherit' }
-          );
-        }
-
-        // Configure wp-mail-smtp plugin for MailHog
-        const mailhogSmtpPort = 1025; // Internal Docker port for SMTP
-        /* eslint-disable camelcase */
-        const wpMailSmtpConfig = {
-          mail: {
-            from_email: 'admin@example.com',
-            from_name: siteName,
-            mailer: 'smtp',
-            return_path: true
-          },
-          smtp: {
-            auth: false,
-            autotls: false,
-            encryption: 'none',
-            host: 'mailhog',
-            pass: '',
-            port: mailhogSmtpPort,
-            user: ''
-          }
-        };
-        /* eslint-enable camelcase */
-        
-        const configJson = JSON.stringify(wpMailSmtpConfig).replaceAll('"', String.raw`\"`);
-        execSync(
-          `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update wp_mail_smtp '${configJson}' --format=json --allow-root"`,
-          { stdio: 'inherit' }
-        );
-
-        console.log('MailHog email configuration completed successfully!');
+        await this.configureMailHog(containerName, siteName);
       }
 
-      // Set up multisite if requested
       if (flags.multisite) {
-        console.log('Setting up WordPress Multisite network...');
-        
-        const networkTitle = `${siteName} Network`;
-        
-        try {
-          // Convert to multisite using WP-CLI
-          const multisiteCommand = flags['multisite-type'] === 'subdomain' 
-            ? `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core multisite-convert --title='${networkTitle}' --subdomains --allow-root"`
-            : `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core multisite-convert --title='${networkTitle}' --allow-root"`;
-          
-          execSync(multisiteCommand, { stdio: 'inherit' });
-          
-          // Add multisite constants to wp-config.php manually since WP-CLI can't modify it when WP_HOME/WP_SITEURL are constants
-          if (flags.domain) {
-            const multisiteConfigContent = `<?php${sslConfig}
-define( 'DB_NAME', 'wordpress' );
-define( 'DB_USER', 'wordpress' );
-define( 'DB_PASSWORD', 'wordpress' );
-define( 'DB_HOST', 'mysql' );
-define( 'DB_CHARSET', 'utf8' );
-define( 'DB_COLLATE', '' );
-
-define( 'WP_DEBUG', true );
-define( 'WP_DEBUG_LOG', true );
-define( 'WP_DEBUG_DISPLAY', true );
-${domainConfig}
-// Multisite configuration
-define( 'WP_ALLOW_MULTISITE', true );
-define( 'MULTISITE', true );
-define( 'SUBDOMAIN_INSTALL', ${flags['multisite-type'] === 'subdomain' ? 'true' : 'false'} );
-define( 'DOMAIN_CURRENT_SITE', '${flags.domain}' );
-define( 'PATH_CURRENT_SITE', '/' );
-define( 'SITE_ID_CURRENT_SITE', 1 );
-define( 'BLOG_ID_CURRENT_SITE', 1 );
-
-$table_prefix = 'wp_';
-
-if ( ! defined( 'ABSPATH' ) ) {
-    define( 'ABSPATH', __DIR__ . '/' );
-}
-
-require_once ABSPATH . 'wp-settings.php';`;
-
-            // Write the complete multisite config
-            const tempMultisiteConfigPath = join(tmpdir(), 'wp-config-multisite.php');
-            fs.writeFileSync(tempMultisiteConfigPath, multisiteConfigContent);
-            execSync(
-              `docker cp ${tempMultisiteConfigPath} ${containerName}:/var/www/html/wp-config.php`,
-              { stdio: 'inherit' }
-            );
-            fs.unlinkSync(tempMultisiteConfigPath);
-          }
-          
-          console.log('WordPress Multisite network setup completed successfully!');
-        } catch (error) {
-          console.warn('Warning: Multisite setup encountered issues. You may need to complete setup manually.');
-          console.warn(`Error: ${error instanceof Error ? error.message : String(error)}`);
-        }
+        await this.setupMultisite(containerName, siteName, flags);
       }
 
-      // Clear WordPress cache
-      execSync(
-        `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp cache flush --allow-root"`,
-        { stdio: 'inherit' }
-      );
-
-      // Final permissions fix
-      execSync(
-        `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html"`,
-        { stdio: 'inherit' }
-      );
-      
-      // Set directory permissions
-      execSync(
-        `docker exec ${containerName} sh -c "find /var/www/html -type d -exec chmod 755 {} +"`,
-        { stdio: 'inherit' }
-      );
-      
-      // Set file permissions  
-      execSync(
-        `docker exec ${containerName} sh -c "find /var/www/html -type f -exec chmod 644 {} +"`,
-        { stdio: 'inherit' }
-      );
+      await this.finalizeInstallation(containerName);
     } catch (error) {
       throw new Error(`Failed to install WordPress: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  private async installWordPressCore(containerName: string, siteName: string, flags: Record<string, unknown>): Promise<void> {
+    const installUrl = flags.domain
+      ? `${flags.ssl ? 'https' : 'http'}://${flags.domain}`
+      : `http://localhost:${flags.port}`;
+
+    execSync(
+      `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core install --url='${installUrl}' --title='${siteName}' --admin_user=admin --admin_password=password --admin_email=admin@example.com --allow-root 2>&1 | grep -v 'sendmail: not found'"`,
+      { stdio: 'inherit' }
+    );
   }
 
   private async isPortAvailable(port: number): Promise<boolean> {
@@ -1342,7 +1237,7 @@ require_once ABSPATH . 'wp-settings.php';`;
     // Otherwise, append .test
     return `${trimmedDomain}.test`;
   }
-  
+
   /**
    * Prepares the project directory structure
    */
@@ -1435,7 +1330,7 @@ desktop.ini
     fs.writeFileSync(join(projectPath, '.gitignore'), gitignoreContent);
     spinner.succeed('.gitignore file created');
   }
-  
+
   /**
    * Set up the Docker environment for WordPress
    */
@@ -1477,6 +1372,81 @@ desktop.ini
     }
   }
 
+  private async setupMultisite(containerName: string, siteName: string, flags: Record<string, unknown>): Promise<void> {
+    console.log('Setting up WordPress Multisite network...');
+
+    const networkTitle = `${siteName} Network`;
+
+    try {
+      const multisiteCommand = flags['multisite-type'] === 'subdomain'
+        ? `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core multisite-convert --title='${networkTitle}' --subdomains --allow-root"`
+        : `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core multisite-convert --title='${networkTitle}' --allow-root"`;
+
+      execSync(multisiteCommand, { stdio: 'inherit' });
+
+      if (flags.domain) {
+        await this.createMultisiteConfig(containerName, siteName, flags);
+      }
+
+      console.log('WordPress Multisite network setup completed successfully!');
+    } catch (error) {
+      console.warn('Warning: Multisite setup encountered issues. You may need to complete setup manually.');
+      console.warn(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private async setupPermissions(containerName: string): Promise<void> {
+    execSync(
+      `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html 2>/dev/null || true"`,
+      { stdio: 'inherit' }
+    );
+
+    const subdirs = ['themes', 'plugins', 'uploads', 'upgrade'];
+    for (const dir of subdirs) {
+      execSync(
+        `docker exec ${containerName} sh -c "mkdir -p /var/www/html/wp-content/${dir} 2>/dev/null || true && chown www-data:www-data /var/www/html/wp-content/${dir} 2>/dev/null || true"`,
+        { stdio: 'inherit' }
+      );
+    }
+
+    execSync(
+      `docker exec ${containerName} sh -c "chown -R www-data:www-data /var/www/html 2>/dev/null || true"`,
+      { stdio: 'inherit' }
+    );
+
+    execSync(
+      `docker exec ${containerName} sh -c "find /var/www/html -type d -exec chmod 755 {} + 2>/dev/null || true"`,
+      { stdio: 'inherit' }
+    );
+
+    execSync(
+      `docker exec ${containerName} sh -c "find /var/www/html -type f -exec chmod 644 {} + 2>/dev/null || true"`,
+      { stdio: 'inherit' }
+    );
+  }
+
+  private async setupPhpConfig(containerName: string): Promise<void> {
+    const phpConfigContent = `memory_limit = 512M
+max_execution_time = 300
+post_max_size = 64M
+upload_max_filesize = 64M`;
+
+    const tempPhpConfigPath = join(tmpdir(), 'php.ini');
+    fs.writeFileSync(tempPhpConfigPath, phpConfigContent);
+
+    execSync(
+      `docker cp ${tempPhpConfigPath} ${containerName}:/usr/local/etc/php/conf.d/custom.ini`,
+      { stdio: 'inherit' }
+    );
+
+    fs.unlinkSync(tempPhpConfigPath);
+
+    execSync(
+      `docker exec ${containerName} sh -c "kill -USR2 1"`,
+      { stdio: 'inherit' }
+    );
+  }
+  
   private async setupProject(args: Record<string, unknown> & { name: string }, flags: Record<string, unknown>): Promise<void> {
     // Ensure nginxProxy is initialized if domain is present
     if (flags.domain && !this.nginxProxy) {
@@ -1596,7 +1566,7 @@ desktop.ini
       this.exit(1);
     }
   }
-
+  
   /**
    * Set up WordPress source files
    */
@@ -1692,7 +1662,14 @@ desktop.ini
       await this.tryRecoverEnvironment(error, wordpressPath, projectPath, spinner);
     }
   }
-  
+
+  private async setupWpCli(containerName: string): Promise<void> {
+    execSync(
+      `docker exec ${containerName} sh -c "curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar && chmod +x wp-cli.phar && mv wp-cli.phar /usr/local/bin/wp && wp --info"`,
+      { stdio: 'inherit' }
+    );
+  }
+
   /**
    * Handle recovery from errors during environment setup
    */
@@ -1722,6 +1699,22 @@ desktop.ini
     } catch (error) {
       spinner.fail('Could not fix WordPress installation');
       console.error('Error details:', error);
+    }
+  }
+  
+  private async updateSiteUrls(containerName: string, flags: Record<string, unknown>): Promise<void> {
+    if (flags.domain === undefined) {
+      execSync(
+        `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update home 'http://localhost:${flags.port}' --allow-root"`,
+        { stdio: 'inherit' }
+      );
+      execSync(
+        `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp option update siteurl 'http://localhost:${flags.port}' --allow-root"`,
+        { stdio: 'inherit' }
+      );
+    } else {
+      const protocol = flags.ssl ? 'https' : 'http';
+      this.logDebug(`URLs already configured in wp-config.php as: ${protocol}://${flags.domain}`);
     }
   }
   
