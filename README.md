@@ -403,7 +403,7 @@ EXAMPLES
   $ wp-spin hook status
 ```
 
-_See code: [src/commands/hook.ts](https://github.com/DKapin/wp-spin/blob/v0.11.12/src/commands/hook.ts)_
+_See code: [src/commands/hook.ts](https://github.com/DKapin/wp-spin/blob/v0.11.14/src/commands/hook.ts)_
 
 ## `wp-spin logs`
 
