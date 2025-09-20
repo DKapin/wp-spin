@@ -9,8 +9,8 @@ import { addSite, getSiteByAlias, getSiteByName, getSiteByPath, getSites, isAlia
 export default class Sites extends Command {
   static args = {
     action: Args.string({
-      description: 'Action to perform: list, name, update, remove',
-      options: ['list', 'name', 'update', 'remove'],
+      description: 'Action to perform: list, name, update',
+      options: ['list', 'name', 'update'],
       required: true,
     }),
     name: Args.string({
@@ -22,11 +22,10 @@ export default class Sites extends Command {
       required: false,
     }),
   };
-  static description = 'Manage WordPress site aliases';
+  static description = 'View and manage WordPress site aliases';
   static examples = [
     '$ wp-spin sites list',
     '$ wp-spin sites name my-site ./path/to/site',
-    '$ wp-spin sites remove my-site',
     '$ wp-spin sites update my-site /new/path/to/site',
   ];
 
@@ -54,16 +53,7 @@ export default class Sites extends Command {
         await this.nameSite(args.name, args.path);
         break;
       }
-      
-      case 'remove': {
-        if (!args.name) {
-          this.error('Site name is required for remove action');
-        }
-        
-        await this.removeSite(args.name);
-        break;
-      }
-      
+
       case 'update': {
         if (!args.name) {
           this.error('Site name is required for update action');
@@ -125,6 +115,74 @@ export default class Sites extends Command {
     return absolutePath;
   }
 
+  private addCustomDomainUrl(sitePath: string, siteUrls: string[]): void {
+    const configPath = path.join(sitePath, '.wp-spin');
+    if (!fs.existsSync(configPath)) {
+      return;
+    }
+
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (config.domain) {
+        const protocol = config.ssl ? 'https' : 'http';
+        siteUrls.unshift(`${chalk.cyan('Custom Domain:')} ${protocol}://${config.domain}`);
+      }
+    } catch {
+      // Ignore config read errors
+    }
+  }
+
+  private buildSiteUrls(runningContainers: string[], sitePath: string, siteUrls: string[]): void {
+    // Extract ports and build URLs
+    const ports = this.extractPortsFromContainerOutput(runningContainers);
+
+    if (ports.wordpress) {
+      siteUrls.push(`${chalk.blue('WordPress:')} http://localhost:${ports.wordpress}`);
+    }
+
+    if (ports.phpmyadmin) {
+      siteUrls.push(`${chalk.blue('phpMyAdmin:')} http://localhost:${ports.phpmyadmin}`);
+    }
+
+    if (ports.mailhog) {
+      siteUrls.push(`${chalk.yellow('MailHog:')} http://localhost:${ports.mailhog}`);
+    }
+
+    // Check for custom domain
+    this.addCustomDomainUrl(sitePath, siteUrls);
+  }
+
+  /**
+   * Extract port information from Docker container output
+   */
+  private extractPortsFromContainerOutput(containerOutput: string[]): { mailhog?: string; phpmyadmin?: string; wordpress?: string } {
+    const ports: { mailhog?: string; phpmyadmin?: string; wordpress?: string } = {};
+
+    for (const line of containerOutput) {
+      const [name, portInfo] = line.split(',');
+
+      if (name.includes('wordpress') && portInfo) {
+        const match = portInfo.match(/0\.0\.0\.0:(\d+)->80\/tcp/);
+        if (match && match[1]) {
+          ports.wordpress = match[1];
+        }
+      } else if (name.includes('phpmyadmin') && portInfo) {
+        const match = portInfo.match(/0\.0\.0\.0:(\d+)->80\/tcp/);
+        if (match && match[1]) {
+          ports.phpmyadmin = match[1];
+        }
+      } else if (name.includes('mailhog') && portInfo) {
+        // MailHog web UI runs on port 8025 internally
+        const match = portInfo.match(/0\.0\.0\.0:(\d+)->8025\/tcp/);
+        if (match && match[1]) {
+          ports.mailhog = match[1];
+        }
+      }
+    }
+
+    return ports;
+  }
+
   /**
    * List all registered sites
    */
@@ -165,13 +223,18 @@ export default class Sites extends Command {
         .filter(s => s.path === site.path)
         .map(s => s.name);
 
-      // Check Docker container status using site name
+      // Check Docker container status and get port information
       let containerStatus = 'Stopped';
+      const siteUrls: string[] = [];
+
       try {
-        const result = execSync(`docker ps --filter "name=${site.name}" --format "{{.Names}}"`, { encoding: 'utf8' });
+        const projectName = path.basename(site.path);
+        const result = execSync(`docker ps --filter "name=${projectName}" --format "{{.Names}},{{.Ports}}"`, { encoding: 'utf8' });
         const runningContainers = result.trim().split('\n').filter(Boolean);
+
         if (runningContainers.length > 0) {
           containerStatus = chalk.green('Running');
+          this.buildSiteUrls(runningContainers, site.path, siteUrls);
         }
       } catch {
         // If docker command fails, assume containers are stopped
@@ -188,6 +251,15 @@ export default class Sites extends Command {
       console.log(`  Path: ${chalk.green(site.path)}`);
       console.log(`  Added: ${addedDate.toLocaleDateString()}`);
       console.log(`  Status: ${containerStatus}`);
+
+      // Display URLs if site is running
+      if (siteUrls.length > 0) {
+        console.log(`  ${chalk.bold('URLs:')}`);
+        for (const url of siteUrls) {
+          console.log(`    ${url}`);
+        }
+      }
+
       console.log('');
     }
     
@@ -195,9 +267,10 @@ export default class Sites extends Command {
       console.log(chalk.yellow(`\nRemoved ${removedCount} invalid site entries.`));
     }
     
-    console.log(`Use ${chalk.blue('wp-spin start --site=<n>')} to start a specific site.`);
+    console.log(`Use ${chalk.blue('wp-spin start --site=<name>')} to start a specific site.`);
+    console.log(`Use ${chalk.blue('wp-spin remove --site=<name>')} to fully remove a site and its containers.`);
   }
-  
+
   /**
    * Name a WordPress site for easy reference
    */
@@ -260,30 +333,8 @@ export default class Sites extends Command {
       }
     }
   }
-  
-  /**
-   * Remove a site
-   */
-  private async removeSite(name: string): Promise<void> {
-    const spinner = ora(`Removing site "${name}"...`).start();
-    
-    // Check if the site exists
-    const existingSite = getSiteByName(name);
-    if (!existingSite) {
-      spinner.fail(`Site "${name}" not found`);
-      this.error(`Site "${name}" not found`);
-    }
-    
-    // Remove the site
-    const success = removeSite(name);
-    
-    if (success) {
-      spinner.succeed(`Site "${name}" removed successfully`);
-    } else {
-      spinner.fail(`Failed to remove site "${name}"`);
-    }
-  }
-  
+
+
   /**
    * Update an existing site
    */
