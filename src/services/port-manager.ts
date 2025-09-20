@@ -20,6 +20,9 @@ export class PortManagerService {
   }
 
   async allocatePort(domain: string, projectPath: string): Promise<number> {
+    // Clean up stale ports first to free up lower port numbers
+    await this.cleanupStalePorts();
+
     // Check if domain already has a port
     if (this.portMapping[domain]) {
       return this.portMapping[domain].port;
