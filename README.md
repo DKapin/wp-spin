@@ -450,7 +450,7 @@ EXAMPLES
   $ wp-spin init network --multisite --multisite-type=subdomain --domain=net.test --mailhog
 ```
 
-_See code: [src/commands/init.ts](https://github.com/DKapin/wp-spin/blob/v0.11.16/src/commands/init.ts)_
+_See code: [src/commands/init.ts](https://github.com/DKapin/wp-spin/blob/v0.11.20/src/commands/init.ts)_
 
 ## `wp-spin logs`
 
