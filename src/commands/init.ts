@@ -23,7 +23,6 @@ export default class Init extends BaseCommand {
   static args = {
     name: Args.string({ description: 'Project name', required: false }),
   };
-  static default = Init;
   static description = 'Initialize a new WordPress development environment';
   static examples = [
     '$ wp-spin init my-site',
@@ -63,6 +62,7 @@ export default class Init extends BaseCommand {
       description: 'WordPress version to install',
     }),
   };
+  static hidden = false;
   protected docker: DockerService;
   private mysqlInitScriptPath: string = '';
   private projectPath: string = '';
