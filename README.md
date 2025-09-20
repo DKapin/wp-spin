@@ -290,6 +290,7 @@ wp-spin includes several security enhancements:
 * [`wp-spin containers`](#wp-spin-containers)
 * [`wp-spin db ACTION [TARGET]`](#wp-spin-db-action-target)
 * [`wp-spin hook ACTION`](#wp-spin-hook-action)
+* [`wp-spin init [NAME]`](#wp-spin-init-name)
 * [`wp-spin logs`](#wp-spin-logs)
 * [`wp-spin php [VERSION]`](#wp-spin-php-version)
 * [`wp-spin plugin`](#wp-spin-plugin)
@@ -404,6 +405,52 @@ EXAMPLES
 ```
 
 _See code: [src/commands/hook.ts](https://github.com/DKapin/wp-spin/blob/v0.11.16/src/commands/hook.ts)_
+
+## `wp-spin init [NAME]`
+
+Initialize a new WordPress development environment
+
+```
+USAGE
+  $ wp-spin init [NAME] [--domain <value>] [-s <value>] [--mailhog] [--multisite] [--multisite-type
+    subdomain|path] [--site-name <value>] [--ssl] [--wordpress-version <value>]
+
+ARGUMENTS
+  NAME  Project name
+
+FLAGS
+  -s, --site=<value>               Site path or site name
+      --domain=<value>             Custom domain to use for the WordPress site (e.g., mysite.test). If no TLD is
+                                   provided, .test will be automatically appended.
+      --mailhog                    Install MailHog for local email testing (also installs WP Mail SMTP plugin)
+      --multisite                  Enable WordPress Multisite (Network) support
+      --multisite-type=<option>    Type of multisite network: subdomain or path (required if --multisite is used)
+                                   <options: subdomain|path>
+      --site-name=<value>          Site name (defaults to project name)
+      --ssl                        Generate a local SSL certificate for your custom domain using mkcert (requires mkcert
+                                   to be installed)
+      --wordpress-version=<value>  [default: latest] WordPress version to install
+
+DESCRIPTION
+  Initialize a new WordPress development environment
+
+EXAMPLES
+  $ wp-spin init my-site
+
+  $ wp-spin init my-site --site-name="My Site"
+
+  $ wp-spin init my-site --wordpress-version=6.4
+
+  $ wp-spin init my-site --domain=mysite
+
+  $ wp-spin init my-site --domain=mysite.test
+
+  $ wp-spin init my-site --mailhog
+
+  $ wp-spin init network --multisite --multisite-type=subdomain --domain=net.test --mailhog
+```
+
+_See code: [src/commands/init.ts](https://github.com/DKapin/wp-spin/blob/v0.11.16/src/commands/init.ts)_
 
 ## `wp-spin logs`
 
@@ -636,26 +683,24 @@ _See code: [src/commands/shell.ts](https://github.com/DKapin/wp-spin/blob/v0.11.
 
 ## `wp-spin sites ACTION [NAME] [PATH]`
 
-Manage WordPress site aliases
+View and manage WordPress site aliases
 
 ```
 USAGE
   $ wp-spin sites ACTION [NAME] [PATH]
 
 ARGUMENTS
-  ACTION  (list|name|update|remove) Action to perform: list, name, update, remove
+  ACTION  (list|name|update) Action to perform: list, name, update
   NAME    Site name/alias
   PATH    Site path (for name/update actions)
 
 DESCRIPTION
-  Manage WordPress site aliases
+  View and manage WordPress site aliases
 
 EXAMPLES
   $ wp-spin sites list
 
   $ wp-spin sites name my-site ./path/to/site
-
-  $ wp-spin sites remove my-site
 
   $ wp-spin sites update my-site /new/path/to/site
 ```

@@ -81,18 +81,34 @@ export default class Start extends BaseCommand {
 
       this.log(`\n${chalk.green('WordPress development environment started successfully!')}`);
 
+      // Check for configured WordPress URLs
+      const configuredUrls = await this.getWordPressUrls();
+      const useCustomUrl = configuredUrls.siteurl &&
+                          !configuredUrls.siteurl.includes('localhost') &&
+                          !flags.domain; // Only auto-detect if domain not explicitly set
+
       this.log(`\nYou can access your site at:`);
-      this.log(`  ${chalk.cyan(`http://localhost:${port}`)}`);
-      if (flags.domain) {
-        const protocol = flags.ssl ? 'https' : 'http';
-        this.log(`  ${chalk.cyan(`${protocol}://${flags.domain}`)}`);
+
+      if (useCustomUrl && configuredUrls.siteurl) {
+        this.log(`  ${chalk.cyan(configuredUrls.siteurl)}`);
+      } else {
+        this.log(`  ${chalk.cyan(`http://localhost:${port}`)}`);
+        if (flags.domain) {
+          const protocol = flags.ssl ? 'https' : 'http';
+          this.log(`  ${chalk.cyan(`${protocol}://${flags.domain}`)}`);
+        }
       }
 
       this.log(`\nWordPress admin:`);
-      this.log(`  ${chalk.cyan(`http://localhost:${port}/wp-admin`)}`);
-      if (flags.domain) {
-        const protocol = flags.ssl ? 'https' : 'http';
-        this.log(`  ${chalk.cyan(`${protocol}://${flags.domain}/wp-admin`)}`);
+
+      if (useCustomUrl && configuredUrls.siteurl) {
+        this.log(`  ${chalk.cyan(`${configuredUrls.siteurl}/wp-admin`)}`);
+      } else {
+        this.log(`  ${chalk.cyan(`http://localhost:${port}/wp-admin`)}`);
+        if (flags.domain) {
+          const protocol = flags.ssl ? 'https' : 'http';
+          this.log(`  ${chalk.cyan(`${protocol}://${flags.domain}/wp-admin`)}`);
+        }
       }
 
       this.log(`\nDefault credentials:`);
@@ -156,7 +172,41 @@ export default class Start extends BaseCommand {
       this.log(chalk.gray('Xdebug disabled for optimal performance'));
     }
   }
-  
+
+  /**
+   * Get WordPress URLs from the database
+   */
+  private async getWordPressUrls(): Promise<{ home?: string; siteurl?: string }> {
+    try {
+      const projectRoot = this.findProjectRoot();
+      if (!projectRoot) return {};
+
+      const projectName = projectRoot.split('/').pop() || 'unknown';
+
+      // Try to get WordPress URLs from the container
+      const { execSync } = await import('node:child_process');
+
+      try {
+        const siteurl = execSync(`docker exec ${projectName}-wordpress-1 wp option get siteurl --allow-root 2>/dev/null`, { encoding: 'utf8' }).trim();
+        const home = execSync(`docker exec ${projectName}-wordpress-1 wp option get home --allow-root 2>/dev/null`, { encoding: 'utf8' }).trim();
+
+        return { home, siteurl };
+      } catch {
+        // If WordPress CLI fails, fall back to direct database query
+        try {
+          const siteurl = execSync(`docker exec ${projectName}-mysql-1 mysql -u wordpress -pwordpress wordpress -e "SELECT option_value FROM wp_options WHERE option_name='siteurl'" --silent --raw 2>/dev/null`, { encoding: 'utf8' }).trim();
+          const home = execSync(`docker exec ${projectName}-mysql-1 mysql -u wordpress -pwordpress wordpress -e "SELECT option_value FROM wp_options WHERE option_name='home'" --silent --raw 2>/dev/null`, { encoding: 'utf8' }).trim();
+
+          return { home, siteurl };
+        } catch {
+          return {};
+        }
+      }
+    } catch {
+      return {};
+    }
+  }
+
   /**
    * Show IDE-specific setup instructions
    */
