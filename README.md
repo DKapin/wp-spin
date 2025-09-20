@@ -16,7 +16,7 @@ A CLI tool for managing Docker-based WordPress environments with ease. Quickly s
 - 🐳 Docker-based isolation for multiple projects
 - 🔧 Easy-to-use CLI commands
 - 🔒 Enhanced security features
-- 🐛 **Xdebug debugging support** with IDE-specific setup instructions
+- 🐛 Xdebug debugging support with IDE-specific setup instructions
 - 🌐 Custom local domains with optional HTTPS/SSL support
 - 🏗️ WordPress Multisite network support (subdomain and path-based)
 - 🔗 Public sharing via ngrok tunnels
