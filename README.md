@@ -73,14 +73,16 @@ npm install -g git+ssh://git@github.com/danielkapin/wp-spin.git
 
 ## Quick Start
 
-1. Create a new WordPress project:
+1. Initialize a new WordPress project:
 ```bash
-wp-spin init my-site
+wp-spin init
 ```
+
+The interactive setup will guide you through creating your project with options for custom domains and SSL.
 
 2. Navigate to your project:
 ```bash
-cd my-site
+cd your-project-name
 ```
 
 3. Start the environment:
@@ -88,7 +90,7 @@ cd my-site
 wp-spin start
 ```
 
-Your WordPress site will be available at `http://localhost:8080` and PHPMyAdmin at `http://localhost:8081`.
+Your WordPress site will be available at the URL shown after startup, typically `http://localhost:8080` and PHPMyAdmin at `http://localhost:8081`.
 
 ## Advanced Project Initialization
 
