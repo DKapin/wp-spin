@@ -24,10 +24,20 @@ A CLI tool for managing Docker-based WordPress environments with ease. Quickly s
 
 ## Prerequisites
 
+### Required
 Before you begin, ensure you have the following installed:
-- Node.js (v18 or later)
-- Docker
-- Docker Compose
+- **Node.js** (v18 or later)
+- **Docker**
+- **Docker Compose**
+
+### Optional (Auto-installed when needed)
+The following tools are automatically installed by wp-spin when you use related features:
+- **mkcert** - For SSL/HTTPS support with custom domains
+
+### Platform-specific (Optional, for enhanced experience)
+- **macOS**: Homebrew (makes SSL setup smoother)
+- **Windows**: Chocolatey or Scoop (makes SSL setup smoother)
+- **Linux**: Standard tools (wget, sudo) are typically pre-installed
 
 ## Installation
 
@@ -44,19 +54,24 @@ After installation, verify that it's working:
 wp-spin --version
 ```
 
+**Note**: During your first use of features like custom domains with SSL, you may be prompted for your system password. This is required for:
+- Installing SSL certificates (mkcert)
+- Modifying `/etc/hosts` for custom domain routing
+- Installing system dependencies like nginx proxy components
+
 ### Installing from GitHub
 
 You can also install wp-spin directly from GitHub using npm:
 
 ```bash
 # Install from the main branch
-npm install -g github:danielkapin/wp-spin
+npm install -g github:DKapin/wp-spin
 
 # Install from a specific branch
-npm install -g github:danielkapin/wp-spin#branch-name
+npm install -g github:DKapin/wp-spin#branch-name
 
 # Install from a specific release tag
-npm install -g github:danielkapin/wp-spin#v1.0.0
+npm install -g github:DKapin/wp-spin#v1.0.0
 ```
 
 ### Alternative Installation Methods
@@ -65,10 +80,10 @@ If you prefer, you can also use the full GitHub URL:
 
 ```bash
 # Using HTTPS
-npm install -g git+https://github.com/danielkapin/wp-spin.git
+npm install -g git+https://github.com/DKapin/wp-spin.git
 
 # Using SSH (if you have SSH keys set up)
-npm install -g git+ssh://git@github.com/danielkapin/wp-spin.git
+npm install -g git+ssh://git@github.com/DKapin/wp-spin.git
 ```
 
 ## Quick Start
@@ -78,69 +93,39 @@ npm install -g git+ssh://git@github.com/danielkapin/wp-spin.git
 wp-spin init
 ```
 
-The interactive setup will guide you through creating your project with options for custom domains and SSL.
+The interactive setup will guide you through creating your project with options for custom domains and SSL, then automatically starts your environment.
 
 2. Navigate to your project:
 ```bash
 cd your-project-name
 ```
 
-3. Start the environment:
+Your WordPress site URLs will be displayed after initialization completes. You can also check all service URLs anytime by running:
 ```bash
-wp-spin start
+wp-spin status
 ```
 
-Your WordPress site will be available at the URL shown after startup, typically `http://localhost:8080` and PHPMyAdmin at `http://localhost:8081`.
+## WordPress Multisite Networks
 
-## Advanced Project Initialization
+For advanced users who need to set up WordPress Multisite networks, wp-spin supports both subdomain and path-based configurations:
 
-The `wp-spin init` command supports many advanced options for customizing your WordPress environment:
-
-### Basic Initialization
-```bash
-wp-spin init my-site                    # Basic setup
-wp-spin init my-site --site-name="My Blog"  # Custom site title
-wp-spin init my-site --wordpress-version=6.4  # Specific WordPress version
-```
-
-### Custom Domains and SSL
-```bash
-wp-spin init my-site --domain=mysite.test           # Custom local domain
-wp-spin init my-site --domain=mysite.test --ssl     # With HTTPS/SSL certificate
-```
-
-### WordPress Multisite Networks
 ```bash
 # Subdomain multisite (requires custom domain)
-wp-spin init network --multisite --multisite-type=subdomain --domain=net.test
+wp-spin init --multisite --multisite-type=subdomain --domain=net.test
 
-# Path-based multisite  
-wp-spin init network --multisite --multisite-type=path --domain=net.test
+# Path-based multisite
+wp-spin init --multisite --multisite-type=path --domain=net.test
 ```
 
-### All-in-One Example
-```bash
-wp-spin init my-project \
-  --site-name="My Development Site" \
-  --domain=dev.test \
-  --ssl \
-  --wordpress-version=latest
-```
-
-## Interactive Mode, Local URLs, and HTTPS
-
-### Interactive Mode
-When you run `wp-spin init` without all required flags, the CLI will guide you through an interactive setup. You'll be prompted for:
-- Project/site name
-- Whether to use a custom local domain (e.g., mysite.test)
-- Whether to enable HTTPS (SSL) for your local domain (requires [mkcert](https://github.com/FiloSottile/mkcert))
-
-You can skip interactive mode by providing all required flags (e.g., `--site-name`, `--domain`, `--ssl`).
+Multisite installations require:
+- A custom domain (cannot use localhost)
+- Multisite type specification (`subdomain` or `path`)
+- All other options (SSL, site name, etc.) can be configured through interactive prompts
 
 ### Local URLs
 By default, your WordPress site will be available at a local URL such as:
 - `http://localhost:8080` (or another port if 8080 is in use)
-- If you specify a custom domain (e.g., `--domain=mysite.test`), it will also be available at `http://mysite.test`
+- If you specify a custom domain through a flag or during init, it will also be available at `http://mysite.test`
 
 The tool automatically configures your `/etc/hosts` and nginx proxy so the custom domain points to your local environment.
 
