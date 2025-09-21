@@ -197,10 +197,10 @@ You can enable Multisite during initialization:
 
 ```bash
 # Subdomain-based multisite (requires custom domain)
-wp-spin init my-network --multisite --multisite-type=subdomain --domain=mynetwork.test
+wp-spin init --multisite --multisite-type=subdomain
 
 # Path-based multisite
-wp-spin init my-network --multisite --multisite-type=path --domain=mynetwork.test
+wp-spin init --multisite --multisite-type=path
 ```
 
 ### Multisite Types
