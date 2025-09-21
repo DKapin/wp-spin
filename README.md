@@ -59,33 +59,6 @@ wp-spin --version
 - Modifying `/etc/hosts` for custom domain routing
 - Installing system dependencies like nginx proxy components
 
-### Installing from GitHub
-
-You can also install wp-spin directly from GitHub using npm:
-
-```bash
-# Install from the main branch
-npm install -g github:DKapin/wp-spin
-
-# Install from a specific branch
-npm install -g github:DKapin/wp-spin#branch-name
-
-# Install from a specific release tag
-npm install -g github:DKapin/wp-spin#v1.0.0
-```
-
-### Alternative Installation Methods
-
-If you prefer, you can also use the full GitHub URL:
-
-```bash
-# Using HTTPS
-npm install -g git+https://github.com/DKapin/wp-spin.git
-
-# Using SSH (if you have SSH keys set up)
-npm install -g git+ssh://git@github.com/DKapin/wp-spin.git
-```
-
 ## Quick Start
 
 1. Initialize a new WordPress project:
@@ -104,23 +77,6 @@ Your WordPress site URLs will be displayed after initialization completes. You c
 ```bash
 wp-spin status
 ```
-
-## WordPress Multisite Networks
-
-For advanced users who need to set up WordPress Multisite networks, wp-spin supports both subdomain and path-based configurations:
-
-```bash
-# Subdomain multisite (requires custom domain)
-wp-spin init --multisite --multisite-type=subdomain --domain=net.test
-
-# Path-based multisite
-wp-spin init --multisite --multisite-type=path --domain=net.test
-```
-
-Multisite installations require:
-- A custom domain (cannot use localhost)
-- Multisite type specification (`subdomain` or `path`)
-- All other options (SSL, site name, etc.) can be configured through interactive prompts
 
 ### Local URLs
 By default, your WordPress site will be available at a local URL such as:
