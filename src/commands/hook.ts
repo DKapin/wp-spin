@@ -18,6 +18,7 @@ static examples = [
     '$ wp-spin hook uninstall',
     '$ wp-spin hook status',
   ];
+static hidden = true;
 static flags = {
     force: Flags.boolean({
       char: 'f',
