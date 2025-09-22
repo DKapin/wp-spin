@@ -328,33 +328,6 @@ EXAMPLES
 
 _See code: [src/commands/db.ts](https://github.com/DKapin/wp-spin/blob/v0.11.25/src/commands/db.ts)_
 
-## `wp-spin hook ACTION`
-
-Manage shell hook for automatic wp-spin cleanup (installed by default)
-
-```
-USAGE
-  $ wp-spin hook ACTION [-f]
-
-ARGUMENTS
-  ACTION  (install|uninstall|status|reset-preferences) Action to perform
-
-FLAGS
-  -f, --force  Force installation even if already installed
-
-DESCRIPTION
-  Manage shell hook for automatic wp-spin cleanup (installed by default)
-
-EXAMPLES
-  $ wp-spin hook install
-
-  $ wp-spin hook uninstall
-
-  $ wp-spin hook status
-```
-
-_See code: [src/commands/hook.ts](https://github.com/DKapin/wp-spin/blob/v0.11.25/src/commands/hook.ts)_
-
 ## `wp-spin init [NAME]`
 
 Initialize a new WordPress development environment
