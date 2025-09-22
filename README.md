@@ -213,7 +213,7 @@ wp-spin init --multisite --multisite-type=path
 **We recommend using path-based multisite** for local development as it's simpler to set up and doesn't require additional configuration.
 
 If you choose subdomain multisite:
-- **Requires a custom domain** (`--domain` flag) for proper subdomain routing
+- **Requires a custom domain** for proper subdomain routing
 - **Each new subdomain site must be manually added to your hosts file**
 - Example: After creating `blog.mynetwork.test`, add `127.0.0.1 blog.mynetwork.test` to `/etc/hosts` (Mac/Linux) or `C:\Windows\System32\drivers\etc\hosts` (Windows)
 
