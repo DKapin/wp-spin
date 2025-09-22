@@ -239,7 +239,6 @@ wp-spin includes several security enhancements:
 <!-- commands -->
 * [`wp-spin containers`](#wp-spin-containers)
 * [`wp-spin db ACTION [TARGET]`](#wp-spin-db-action-target)
-* [`wp-spin hook ACTION`](#wp-spin-hook-action)
 * [`wp-spin init [NAME]`](#wp-spin-init-name)
 * [`wp-spin logs`](#wp-spin-logs)
 * [`wp-spin php [VERSION]`](#wp-spin-php-version)

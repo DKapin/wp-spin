@@ -25,6 +25,7 @@ static flags = {
       description: 'Force installation even if already installed',
     }),
   };
+static hidden = true;
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Hook);
