@@ -1,6 +1,7 @@
 import { Args, Command } from '@oclif/core';
 import chalk from 'chalk';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import ora from 'ora';
 
@@ -115,29 +116,65 @@ export default class Sites extends Command {
     return absolutePath;
   }
 
-  private addCustomDomainUrl(sitePath: string, siteUrls: string[]): void {
+  private getCustomDomainConfig(sitePath: string): { domain: string; ssl: boolean } | null {
+    // First try the .wp-spin config file
     const configPath = path.join(sitePath, '.wp-spin');
-    if (!fs.existsSync(configPath)) {
-      return;
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (config.domain) {
+          return {
+            domain: config.domain,
+            ssl: Boolean(config.ssl)
+          };
+        }
+      } catch {
+        // Ignore config read errors
+      }
     }
 
+    // Fall back to checking port mapping file for domain by project path
     try {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      if (config.domain) {
-        const protocol = config.ssl ? 'https' : 'http';
-        siteUrls.unshift(`${chalk.cyan('Custom Domain:')} ${protocol}://${config.domain}`);
+      const portMappingPath = path.join(os.homedir(), '.wp-spin', 'port-mapping.json');
+      if (fs.existsSync(portMappingPath)) {
+        const portMapping = JSON.parse(fs.readFileSync(portMappingPath, 'utf8'));
+
+        // Find domain by matching project path
+        for (const [domain, config] of Object.entries(portMapping)) {
+          if ((config as any).projectPath === sitePath && domain.includes('.')) {
+            // Check if SSL certificate exists for this domain
+            const sslCertPath = path.join(os.homedir(), '.wp-spin', 'nginx-proxy', 'certs', `${domain}.pem`);
+            const ssl = fs.existsSync(sslCertPath);
+            return {
+              domain,
+              ssl
+            };
+          }
+        }
       }
     } catch {
-      // Ignore config read errors
+      // Ignore port mapping read errors
     }
+
+    return null;
   }
 
   private buildSiteUrls(runningContainers: string[], sitePath: string, siteUrls: string[]): void {
     // Extract ports and build URLs
     const ports = this.extractPortsFromContainerOutput(runningContainers);
 
+    // Check for custom domain configuration first
+    const customDomain = this.getCustomDomainConfig(sitePath);
+
     if (ports.wordpress) {
-      siteUrls.push(`${chalk.blue('WordPress:')} http://localhost:${ports.wordpress}`);
+      if (customDomain) {
+        // Use custom domain for WordPress URL
+        const protocol = customDomain.ssl ? 'https' : 'http';
+        siteUrls.push(`${chalk.blue('WordPress:')} ${protocol}://${customDomain.domain}`);
+      } else {
+        // Fall back to localhost
+        siteUrls.push(`${chalk.blue('WordPress:')} http://localhost:${ports.wordpress}`);
+      }
     }
 
     if (ports.phpmyadmin) {
@@ -147,9 +184,6 @@ export default class Sites extends Command {
     if (ports.mailhog) {
       siteUrls.push(`${chalk.yellow('MailHog:')} http://localhost:${ports.mailhog}`);
     }
-
-    // Check for custom domain
-    this.addCustomDomainUrl(sitePath, siteUrls);
   }
 
   /**
