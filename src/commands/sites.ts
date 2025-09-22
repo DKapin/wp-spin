@@ -116,49 +116,6 @@ export default class Sites extends Command {
     return absolutePath;
   }
 
-  private getCustomDomainConfig(sitePath: string): { domain: string; ssl: boolean } | null {
-    // First try the .wp-spin config file
-    const configPath = path.join(sitePath, '.wp-spin');
-    if (fs.existsSync(configPath)) {
-      try {
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        if (config.domain) {
-          return {
-            domain: config.domain,
-            ssl: Boolean(config.ssl)
-          };
-        }
-      } catch {
-        // Ignore config read errors
-      }
-    }
-
-    // Fall back to checking port mapping file for domain by project path
-    try {
-      const portMappingPath = path.join(os.homedir(), '.wp-spin', 'port-mapping.json');
-      if (fs.existsSync(portMappingPath)) {
-        const portMapping = JSON.parse(fs.readFileSync(portMappingPath, 'utf8'));
-
-        // Find domain by matching project path
-        for (const [domain, config] of Object.entries(portMapping)) {
-          if ((config as any).projectPath === sitePath && domain.includes('.')) {
-            // Check if SSL certificate exists for this domain
-            const sslCertPath = path.join(os.homedir(), '.wp-spin', 'nginx-proxy', 'certs', `${domain}.pem`);
-            const ssl = fs.existsSync(sslCertPath);
-            return {
-              domain,
-              ssl
-            };
-          }
-        }
-      }
-    } catch {
-      // Ignore port mapping read errors
-    }
-
-    return null;
-  }
-
   private buildSiteUrls(runningContainers: string[], sitePath: string, siteUrls: string[]): void {
     // Extract ports and build URLs
     const ports = this.extractPortsFromContainerOutput(runningContainers);
@@ -215,6 +172,50 @@ export default class Sites extends Command {
     }
 
     return ports;
+  }
+
+  private getCustomDomainConfig(sitePath: string): null | { domain: string; ssl: boolean } {
+    // First try the .wp-spin config file
+    const configPath = path.join(sitePath, '.wp-spin');
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        if (config.domain) {
+          return {
+            domain: config.domain,
+            ssl: Boolean(config.ssl)
+          };
+        }
+      } catch {
+        // Ignore config read errors
+      }
+    }
+
+    // Fall back to checking port mapping file for domain by project path
+    try {
+      const portMappingPath = path.join(os.homedir(), '.wp-spin', 'port-mapping.json');
+      if (fs.existsSync(portMappingPath)) {
+        const portMapping = JSON.parse(fs.readFileSync(portMappingPath, 'utf8'));
+
+        // Find domain by matching project path
+        for (const [domain, config] of Object.entries(portMapping)) {
+          const typedConfig = config as { port: number; projectPath: string };
+          if (typedConfig.projectPath === sitePath && domain.includes('.')) {
+            // Check if SSL certificate exists for this domain
+            const sslCertPath = path.join(os.homedir(), '.wp-spin', 'nginx-proxy', 'certs', `${domain}.pem`);
+            const ssl = fs.existsSync(sslCertPath);
+            return {
+              domain,
+              ssl
+            };
+          }
+        }
+      }
+    } catch {
+      // Ignore port mapping read errors
+    }
+
+    return null;
   }
 
   /**
