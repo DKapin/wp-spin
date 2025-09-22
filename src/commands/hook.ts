@@ -18,7 +18,6 @@ static examples = [
     '$ wp-spin hook uninstall',
     '$ wp-spin hook status',
   ];
-static hidden = true;
 static flags = {
     force: Flags.boolean({
       char: 'f',
@@ -26,6 +25,7 @@ static flags = {
       description: 'Force installation even if already installed',
     }),
   };
+static hidden = true;
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Hook);
