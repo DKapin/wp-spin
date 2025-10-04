@@ -25,6 +25,7 @@ tsconfig.tsbuildinfo
 
 # Dependencies
 /node_modules
+node_modules
 .pnpm-store/
 
 # Package manager files
