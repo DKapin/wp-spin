@@ -11,7 +11,7 @@ import { arch, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ora from 'ora';
 
-import { addSite } from '../config/sites.js';
+import { addSite, type SiteConfig } from '../config/sites.js';
 import { DockerService } from '../services/docker.js';
 import { PortManagerService } from '../services/port-manager.js';
 import { BaseCommand, baseFlags } from './base.js';
@@ -138,7 +138,7 @@ export default class Init extends BaseCommand {
    */
   async run(): Promise<void> {
     let { args, flags } = await this.parse(Init) as { args: Record<string, unknown>, flags: Record<string, unknown> };
-
+    this.log('Initializing the new WordPress Local Project')
     // Normalize domain if provided
     if (flags.domain && typeof flags.domain === 'string') {
       flags.domain = this.normalizeDomain(flags.domain);
@@ -812,12 +812,13 @@ require_once ABSPATH . 'wp-settings.php';`;
 
   private async downloadWordPressCore(containerName: string): Promise<void> {
     try {
+      this.log('Downloading WordPress core files using WP-CLI...');
       execSync(
         `docker exec ${containerName} sh -c "cd /var/www/html && php -d memory_limit=512M /usr/local/bin/wp core download --force --allow-root"`,
         { stdio: 'inherit' }
       );
     } catch {
-      console.log('WordPress download failed, trying direct download...');
+      this.log('WordPress download failed, trying direct download...');
       execSync(
         `docker exec ${containerName} sh -c "cd /var/www/html && curl -k -L -O https://wordpress.org/latest.tar.gz && tar -xzf latest.tar.gz --strip-components=1 && rm latest.tar.gz"`,
         { stdio: 'inherit' }
@@ -1089,6 +1090,7 @@ function wp_spin_is_local_environment() {
   }
 
   private async handleInteractiveMode(args: Record<string, unknown>, flags: Record<string, unknown>): Promise<{ args: Record<string, unknown>, flags: Record<string, unknown> }> {
+    this.log('Entering interactive mode to gather missing configuration options...\n');
     const prompt = createPromptModule();
     const interactiveAnswers: { domain?: string; mailhog?: boolean; multisite?: boolean; 'multisite-type'?: string; name?: string; ssl?: boolean } = {};
 
@@ -1691,8 +1693,42 @@ upload_max_filesize = 64M`;
         await this.nginxProxy.addDomain(flags.domain as string, port, ssl);
       }
 
-      // Add site to config
-      addSite(projectName, projectPath);
+      // Add site to config with full configuration
+      const siteConfig: Partial<SiteConfig> = {};
+
+      // Only add fields that are actually set to avoid storing unnecessary false values
+      if (flags.domain) {
+        siteConfig.domain = flags.domain as string;
+      }
+
+      if (flags.ssl !== undefined) {
+        siteConfig.ssl = Boolean(flags.ssl);
+      }
+
+      if (flags.multisite !== undefined) {
+        siteConfig.multisite = Boolean(flags.multisite);
+      }
+
+      if (flags['multisite-type']) {
+        siteConfig.multisiteType = flags['multisite-type'] as 'path' | 'subdomain';
+      }
+
+      if (port) {
+        siteConfig.port = port;
+      }
+
+      if (flags['wordpress-version']) {
+        siteConfig.wordpressVersion = flags['wordpress-version'] as string;
+      }
+
+      if (flags.mailhog !== undefined) {
+        siteConfig.mailhog = Boolean(flags.mailhog);
+      }
+
+      // Always set xdebug to false initially
+      siteConfig.xdebug = false;
+
+      addSite(projectName, projectPath, siteConfig);
 
       spinner.succeed('WordPress development environment initialized successfully!');
 

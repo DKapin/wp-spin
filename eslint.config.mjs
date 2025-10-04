@@ -11,6 +11,6 @@ export default [
   ...oclif,
   prettier,
   {
-    ignores: ['scripts/**/*.cjs', 'scripts/**/*.js']
+    ignores: ['scripts/**/*.cjs', 'scripts/**/*.js', 'ui/dist/**/*']
   }
 ]

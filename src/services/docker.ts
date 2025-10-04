@@ -310,19 +310,21 @@ export class DockerService implements IDockerService {
    * Restart containers with updated environment variables from .env file
    * This is necessary when environment variables change (like XDEBUG_MODE)
    */
-  async restartWithEnvReload(): Promise<void> {
+  async restartWithEnvReload(showCompletionMessage: boolean = true): Promise<void> {
     this.spinner.start('Restarting WordPress environment with updated settings...');
     try {
       // Stop containers first
       await this.runDockerCompose(['down']);
-      
+
       // Start containers with updated environment variables
       await this.runDockerCompose(['up', '-d']);
-      
+
       // Wait for MySQL to be ready
       await this.waitForMySQL();
-      
-      this.spinner.succeed('WordPress environment restarted with updated settings');
+
+      if (showCompletionMessage) {
+        this.spinner.succeed('WordPress environment restarted with updated settings');
+      }
     } catch (error) {
       this.spinner.fail('Failed to restart WordPress environment');
       if (error instanceof Error) {

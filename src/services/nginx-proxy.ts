@@ -43,16 +43,20 @@ http {
     this.ensurePortMapFile();
   }
 
+  /**
+   * Ensure the nginx-proxy container is running
+   * This is useful when starting sites that have domains but don't need to add new domains
+   */
   public async addDomain(domain: string, port?: number, ssl?: boolean): Promise<void> {
     try {
       const portMap = this.getPortMap();
-      
+
       // If no port specified, find an available one
       const existingPort = portMap[domain];
       if (!port) {
         port = existingPort && !(await this.isPortInUse(existingPort)) ? existingPort : await this.findAvailablePort(8080);
       }
-      
+
       // Only check for port conflicts if we're not using a provided port
       if (!port && await this.isPortInUse(port)) {
         // If specified port is in use, find a new one
@@ -70,6 +74,10 @@ http {
     } catch (error) {
       throw new Error(`Failed to configure domain ${domain}: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  public async ensureProxyRunning(): Promise<void> {
+    await this.ensureContainerRunning();
   }
 
   public async generateSSLCert(domain: string): Promise<{ cert: string, key: string }> {
