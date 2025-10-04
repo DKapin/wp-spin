@@ -4,6 +4,7 @@ import { createPromptModule } from 'inquirer';
 import * as fs from 'node:fs';
 import { basename, join } from 'node:path';
 
+import { detectAndMigrateSiteConfig, getSiteByPath, type SiteConfig, updateSiteConfigWithDetected } from '../config/sites.js';
 import { BaseCommand, baseFlags } from './base.js';
 
 export default class Start extends BaseCommand {
@@ -64,18 +65,34 @@ export default class Start extends BaseCommand {
       // Get the actual port (might be different if there was a port conflict)
       const port = await this.docker.getPort('wordpress');
 
-      // Configure custom domain if specified
-      if (flags.domain) {
+      // Get site configuration with auto-migration
+      const siteConfig = await this.getSiteConfigWithMigration();
+      const configuredDomain = flags.domain || siteConfig?.domain;
+
+      // Configure custom domain if specified OR detected from site configuration
+      if (configuredDomain) {
+        // Initialize nginx proxy if not already done
+        if (!this.nginxProxy) {
+          this.nginxProxy = new (await import('../services/nginx-proxy.js')).NginxProxyService();
+        }
+
+        // Always ensure nginx-proxy container is running when we have a domain
+        await this.nginxProxy.ensureProxyRunning();
+
         // Check if domain is already configured
-        const existingPort = this.nginxProxy.getPortForDomain(flags.domain);
+        const existingPort = this.nginxProxy.getPortForDomain(configuredDomain);
         const shouldUpdatePort = existingPort && existingPort !== port;
+
+        // Use SSL setting from site config if not specified in flags
+        const useSSL = flags.ssl === undefined ? (siteConfig?.ssl || false) : flags.ssl;
+
         // eslint-disable-next-line unicorn/prefer-ternary -- Cannot use ternary with await
         if (shouldUpdatePort) {
           // Port has changed, update nginx config
-          await this.nginxProxy.updateSitePort(flags.domain, port);
+          await this.nginxProxy.updateSitePort(configuredDomain, port);
         } else {
           // New domain or same port, add/update domain
-          await this.nginxProxy.addDomain(flags.domain, port, flags.ssl);
+          await this.nginxProxy.addDomain(configuredDomain, port, useSSL);
         }
       }
 
@@ -170,6 +187,55 @@ export default class Start extends BaseCommand {
       await this.showIdeInstructions(selectedIde || 'other');
     } else {
       this.log(chalk.gray('Xdebug disabled for optimal performance'));
+    }
+  }
+
+  /**
+   * Get site configuration with auto-migration from fallback sources
+   */
+  private async getSiteConfigWithMigration(): Promise<SiteConfig | undefined> {
+    try {
+      const currentPath = process.cwd();
+
+      // First, try to get site config from sites.json
+      let siteConfig = getSiteByPath(currentPath);
+
+      if (siteConfig) {
+        // Site exists in registry, but check if we need to migrate missing settings
+        if (!siteConfig.domain || siteConfig.ssl === undefined || siteConfig.multisite === undefined) {
+          // Detect missing configuration from fallback sources
+          const detectedConfig = detectAndMigrateSiteConfig(currentPath);
+
+          // Update the site config with detected settings
+          if (Object.keys(detectedConfig).length > 0) {
+            updateSiteConfigWithDetected(siteConfig.name, detectedConfig);
+
+            // Re-fetch the updated config
+            siteConfig = getSiteByPath(currentPath);
+          }
+        }
+
+        return siteConfig;
+      }
+
+      // Site not in registry, try to detect configuration from fallback sources
+      // but don't add to registry automatically
+      if (!fs.existsSync('./docker-compose.yml')) {
+        return undefined;
+      }
+
+      const detectedConfig = detectAndMigrateSiteConfig(currentPath);
+
+      // Create a temporary site config for this session
+      return {
+        createdAt: new Date().toISOString(),
+        name: basename(currentPath),
+        path: currentPath,
+        ...detectedConfig
+      } as SiteConfig;
+    } catch (error) {
+      console.warn(chalk.yellow(`Warning: Could not load site configuration: ${error}`));
+      return undefined;
     }
   }
 

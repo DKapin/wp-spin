@@ -1,12 +1,24 @@
 import fs from 'fs-extra';
+import { execSync } from 'node:child_process';
 import * as os from 'node:os';
 import { join } from 'node:path';
 
 // Interface for site configuration
 export interface SiteConfig {
   createdAt: string;
+  domain?: string;
+  // Enhanced configuration (optional for backwards compatibility)
+  mailhog?: boolean;
+  multisite?: boolean;
+
+  multisiteType?: 'path' | 'subdomain';
   name: string;
   path: string;
+  phpVersion?: string;
+  port?: number;
+  ssl?: boolean;
+  wordpressVersion?: string;
+  xdebug?: boolean;
 }
 
 // Interface for the configuration file
@@ -101,7 +113,7 @@ export function getSiteByPath(path: string): SiteConfig | undefined {
  * @param path Absolute path to the site directory
  * @returns true if successful, false otherwise
  */
-export function addSite(name: string, path: string): boolean {
+export function addSite(name: string, path: string, config?: Partial<SiteConfig>): boolean {
   try {
     initSitesConfig();
     
@@ -122,25 +134,26 @@ export function addSite(name: string, path: string): boolean {
       return false;
     }
     
-    // Add the new site
+    // Add the new site with configuration
     sites.push({
       createdAt: new Date().toISOString(),
       name,
       path,
+      ...config, // Merge in any provided configuration
     });
     
     // Write updated configuration while preserving existing data
     const configContent = fs.readFileSync(SITES_CONFIG_PATH, 'utf8');
-    let config: ConfigFile = { sites: [] };
+    let fileConfig: ConfigFile = { sites: [] };
     try {
-      config = JSON.parse(configContent) as ConfigFile;
+      fileConfig = JSON.parse(configContent) as ConfigFile;
     } catch {
       // If parsing fails, create a new config object
       // No need to use the error, just create a new object
     }
     
-    config.sites = sites;
-    fs.writeFileSync(SITES_CONFIG_PATH, JSON.stringify(config, null, 2));
+    fileConfig.sites = sites;
+    fs.writeFileSync(SITES_CONFIG_PATH, JSON.stringify(fileConfig, null, 2));
     return true;
   } catch (error) {
     console.error('Error adding site to configuration:', error);
@@ -183,16 +196,16 @@ export function updateSite(name: string, path: string): boolean {
     
     // Write updated configuration while preserving existing data
     const configContent = fs.readFileSync(SITES_CONFIG_PATH, 'utf8');
-    let config: ConfigFile = { sites: [] };
+    let fileConfig: ConfigFile = { sites: [] };
     try {
-      config = JSON.parse(configContent) as ConfigFile;
+      fileConfig = JSON.parse(configContent) as ConfigFile;
     } catch {
       // If parsing fails, create a new config object
       // No need to use the error, just create a new object
     }
     
-    config.sites = sites;
-    fs.writeFileSync(SITES_CONFIG_PATH, JSON.stringify(config, null, 2));
+    fileConfig.sites = sites;
+    fs.writeFileSync(SITES_CONFIG_PATH, JSON.stringify(fileConfig, null, 2));
     return true;
   } catch (error) {
     console.error('Error updating site in configuration:', error);
@@ -223,16 +236,16 @@ export function removeSite(name: string): boolean {
     
     // Write updated configuration while preserving existing data
     const configContent = fs.readFileSync(SITES_CONFIG_PATH, 'utf8');
-    let config: ConfigFile = { sites: [] };
+    let fileConfig: ConfigFile = { sites: [] };
     try {
-      config = JSON.parse(configContent) as ConfigFile;
+      fileConfig = JSON.parse(configContent) as ConfigFile;
     } catch {
       // If parsing fails, create a new config object
       // No need to use the error, just create a new object
     }
     
-    config.sites = updatedSites;
-    fs.writeFileSync(SITES_CONFIG_PATH, JSON.stringify(config, null, 2));
+    fileConfig.sites = updatedSites;
+    fs.writeFileSync(SITES_CONFIG_PATH, JSON.stringify(fileConfig, null, 2));
     return true;
   } catch (error) {
     console.error('Error removing site from configuration:', error);
@@ -289,4 +302,122 @@ export function getSiteByName(name: string): SiteConfig | undefined {
  */
 export function isAliasInUse(alias: string): SiteConfig | undefined {
   return getSiteByAlias(alias);
+}
+
+/**
+ * Detect and migrate site configuration from fallback sources
+ * @param sitePath Path to the site directory
+ * @returns Enhanced site configuration from fallback detection
+ */
+export function detectAndMigrateSiteConfig(sitePath: string): Partial<SiteConfig> {
+  const detected: Partial<SiteConfig> = {};
+
+  try {
+    // Detect domain from docker-compose.yml (multisite)
+    const dockerComposePath = join(sitePath, 'docker-compose.yml');
+    if (fs.existsSync(dockerComposePath)) {
+      const dockerComposeContent = fs.readFileSync(dockerComposePath, 'utf8');
+
+      // Check for multisite configuration
+      if (dockerComposeContent.includes('DOMAIN_CURRENT_SITE')) {
+        detected.multisite = true;
+
+        // Extract domain
+        const domainMatch = dockerComposeContent.match(/DOMAIN_CURRENT_SITE',\s*'([^']+)'/);
+        if (domainMatch && domainMatch[1]) {
+          detected.domain = domainMatch[1];
+        }
+
+        // Extract multisite type
+        detected.multisiteType = dockerComposeContent.includes('SUBDOMAIN_INSTALL') ? 'subdomain' : 'path';
+      }
+
+      // Check for other features
+      detected.mailhog = dockerComposeContent.includes('mailhog');
+      detected.xdebug = dockerComposeContent.includes('xdebug') || dockerComposeContent.includes('XDEBUG_MODE');
+
+      // Extract port mapping
+      const portMatch = dockerComposeContent.match(/"(\d+):80"/);
+      if (portMatch && portMatch[1]) {
+        detected.port = Number.parseInt(portMatch[1], 10);
+      }
+    }
+
+    // If no domain from docker-compose.yml, try WordPress database
+    if (!detected.domain) {
+      try {
+        const projectName = sitePath.split('/').pop() || 'unknown';
+        const siteurl = execSync(`docker exec ${projectName}-wordpress-1 wp --allow-root option get siteurl 2>/dev/null`, { encoding: 'utf8' }).trim();
+
+        if (siteurl && !siteurl.includes('localhost')) {
+          // Extract domain from URL
+          const urlMatch = siteurl.match(/https?:\/\/([^/]+)/);
+          if (urlMatch && urlMatch[1] && !urlMatch[1].includes(':')) {
+            detected.domain = urlMatch[1];
+            detected.ssl = siteurl.startsWith('https://');
+          }
+        }
+      } catch {
+        // WordPress not running or accessible, skip database detection
+      }
+    }
+
+    // Check for SSL certificates
+    if (detected.domain && !detected.ssl) {
+      const certsDir = join(os.homedir(), '.wp-spin', 'nginx-proxy', 'certs');
+      const certPath = join(certsDir, `${detected.domain}.pem`);
+      detected.ssl = fs.existsSync(certPath);
+    }
+
+  } catch (error) {
+    // If detection fails, return empty object
+    console.warn(`Warning: Could not detect configuration for site at ${sitePath}: ${error}`);
+  }
+
+  return detected;
+}
+
+/**
+ * Update a site's configuration with detected settings and save to sites.json
+ * @param siteName Site name/alias
+ * @param detectedConfig Detected configuration to merge
+ * @returns Whether the update was successful
+ */
+export function updateSiteConfigWithDetected(siteName: string, detectedConfig: Partial<SiteConfig>): boolean {
+  try {
+    const sites = getSites();
+    const siteIndex = sites.findIndex(site => site.name === siteName);
+
+    if (siteIndex === -1) {
+      return false;
+    }
+
+    // Merge detected config with existing config (only fill in missing values)
+    const currentSite = sites[siteIndex];
+    const updatedSite: SiteConfig = {
+      ...currentSite,
+      // Only update fields that are currently undefined/missing
+      domain: currentSite.domain || detectedConfig.domain,
+      mailhog: currentSite.mailhog === undefined ? detectedConfig.mailhog : currentSite.mailhog,
+      multisite: currentSite.multisite === undefined ? detectedConfig.multisite : currentSite.multisite,
+      multisiteType: currentSite.multisiteType || detectedConfig.multisiteType,
+      port: currentSite.port || detectedConfig.port,
+      ssl: currentSite.ssl === undefined ? detectedConfig.ssl : currentSite.ssl,
+      xdebug: currentSite.xdebug === undefined ? detectedConfig.xdebug : currentSite.xdebug,
+    };
+
+    sites[siteIndex] = updatedSite;
+
+    // Save updated configuration
+    initSitesConfig();
+    const configContent = fs.readFileSync(SITES_CONFIG_PATH, 'utf8');
+    const fileConfig = JSON.parse(configContent) as ConfigFile;
+    fileConfig.sites = sites;
+    fs.writeFileSync(SITES_CONFIG_PATH, JSON.stringify(fileConfig, null, 2));
+
+    return true;
+  } catch (error) {
+    console.warn(`Warning: Could not update site configuration: ${error}`);
+    return false;
+  }
 } 

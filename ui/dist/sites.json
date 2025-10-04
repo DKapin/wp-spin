@@ -1,0 +1,426 @@
+{
+  "sites": [
+    {
+      "name": "xdebugger",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/xdebug-testing/xdebugger",
+      "status": "stopped",
+      "createdAt": "2025-08-03T20:21:25.714Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": false,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8087,
+      "mailhogPort": null,
+      "wpPort": 8087,
+      "urls": {
+        "wordpress": "https://xdebugger.test",
+        "mailhog": null,
+        "phpmyadmin": "http://localhost:8087"
+      }
+    },
+    {
+      "name": "mailhogging",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/mailhog-tesitng/mailhogging",
+      "status": "stopped",
+      "createdAt": "2025-08-11T00:37:14.856Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": false,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8092,
+      "mailhogPort": null,
+      "wpPort": 8092,
+      "urls": {
+        "wordpress": "https://mailhogging.test",
+        "mailhog": null,
+        "phpmyadmin": "http://localhost:8092"
+      }
+    },
+    {
+      "name": "mailhogger",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/mailhog-tesitng/mailhogger",
+      "status": "stopped",
+      "createdAt": "2025-08-11T00:41:09.514Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": false,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8095,
+      "mailhogPort": null,
+      "wpPort": 8095,
+      "urls": {
+        "wordpress": "https://mailhogger.test",
+        "mailhog": null,
+        "phpmyadmin": "http://localhost:8095"
+      }
+    },
+    {
+      "name": "mailhogtest",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/mailhog-tesitng/mailhogtest",
+      "status": "stopped",
+      "createdAt": "2025-08-11T00:43:50.627Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": false,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8097,
+      "mailhogPort": null,
+      "wpPort": 8097,
+      "urls": {
+        "wordpress": "https://mailhogtest.test",
+        "mailhog": null,
+        "phpmyadmin": "http://localhost:8097"
+      }
+    },
+    {
+      "name": "mhtest",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/mailhog-tesitng/mhtest",
+      "status": "running",
+      "url": "http://localhost:8099",
+      "port": 8099,
+      "createdAt": "2025-08-11T00:46:10.329Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": false,
+      "hasXdebug": true,
+      "healthStatus": "healthy",
+      "customDomain": null,
+      "dbPort": 8099,
+      "mailhogPort": null,
+      "wpPort": 8099,
+      "urls": {
+        "wordpress": "https://mhtest.test",
+        "mailhog": null,
+        "phpmyadmin": "http://localhost:8099"
+      }
+    },
+    {
+      "name": "mhnewtest",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/mailhog-tesitng/mhnewtest",
+      "status": "stopped",
+      "createdAt": "2025-08-11T00:49:41.468Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8101,
+      "mailhogPort": 8103,
+      "wpPort": 8101,
+      "urls": {
+        "wordpress": "https://mhnewtest.test",
+        "mailhog": "http://localhost:8103",
+        "phpmyadmin": "http://localhost:8101"
+      }
+    },
+    {
+      "name": "mailhogflag",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/mailhog-tesitng/mailhogflag",
+      "status": "stopped",
+      "createdAt": "2025-08-11T01:08:11.414Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8105,
+      "mailhogPort": 8107,
+      "wpPort": 8105,
+      "urls": {
+        "wordpress": "https://mailhogflag.test",
+        "mailhog": "http://localhost:8107",
+        "phpmyadmin": "http://localhost:8105"
+      }
+    },
+    {
+      "name": "mailhogoutput",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/mailhog-tesitng/mailhogoutput",
+      "status": "stopped",
+      "createdAt": "2025-08-11T01:13:06.108Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8109,
+      "mailhogPort": 8111,
+      "wpPort": 8109,
+      "urls": {
+        "wordpress": "https://mailhogoutput.test",
+        "mailhog": "http://localhost:8111",
+        "phpmyadmin": "http://localhost:8109"
+      }
+    },
+    {
+      "name": "outputtest",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/mailhog-tesitng/outputtest",
+      "status": "stopped",
+      "createdAt": "2025-08-11T01:23:25.974Z",
+      "phpVersion": "8.1",
+      "hasSSL": false,
+      "isMultisite": false,
+      "hasMailhog": false,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8113,
+      "mailhogPort": null,
+      "wpPort": 8113,
+      "urls": {
+        "wordpress": "http://localhost:8113",
+        "mailhog": null,
+        "phpmyadmin": "http://localhost:8113"
+      }
+    },
+    {
+      "name": "importtest",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/mailhog-tesitng/importtest",
+      "status": "stopped",
+      "createdAt": "2025-08-17T18:27:25.315Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8115,
+      "mailhogPort": 8117,
+      "wpPort": 8115,
+      "urls": {
+        "wordpress": "https://importtest.test",
+        "mailhog": "http://localhost:8117",
+        "phpmyadmin": "http://localhost:8115"
+      }
+    },
+    {
+      "name": "envtest",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/mailhog-tesitng/envtest/envtest",
+      "status": "stopped",
+      "createdAt": "2025-08-18T05:44:54.293Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8119,
+      "mailhogPort": 8121,
+      "wpPort": 8119,
+      "urls": {
+        "wordpress": "https://envtest.test",
+        "mailhog": "http://localhost:8121",
+        "phpmyadmin": "http://localhost:8119"
+      }
+    },
+    {
+      "name": "wpspintesting",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/wpspintesting",
+      "status": "stopped",
+      "createdAt": "2025-09-14T03:33:03.639Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8096,
+      "mailhogPort": 8100,
+      "wpPort": 8096,
+      "urls": {
+        "wordpress": "https://wpspintesting.test",
+        "mailhog": "http://localhost:8100",
+        "phpmyadmin": "http://localhost:8096"
+      }
+    },
+    {
+      "name": "status",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/status",
+      "status": "stopped",
+      "createdAt": "2025-09-20T17:39:32.073Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8103,
+      "mailhogPort": 8106,
+      "wpPort": 8103,
+      "urls": {
+        "wordpress": "https://status.test",
+        "mailhog": "http://localhost:8106",
+        "phpmyadmin": "http://localhost:8103"
+      }
+    },
+    {
+      "name": "multisiting",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/multisiting",
+      "status": "stopped",
+      "createdAt": "2025-09-21T02:47:32.298Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": true,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8082,
+      "mailhogPort": 8086,
+      "wpPort": 8082,
+      "urls": {
+        "wordpress": "https://multisiting.test",
+        "mailhog": "http://localhost:8086",
+        "phpmyadmin": "http://localhost:8082"
+      }
+    },
+    {
+      "name": "mssub",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/mssub",
+      "status": "stopped",
+      "createdAt": "2025-09-21T02:49:50.228Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": true,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8089,
+      "mailhogPort": 8091,
+      "wpPort": 8089,
+      "urls": {
+        "wordpress": "https://mssub.test",
+        "mailhog": "http://localhost:8091",
+        "phpmyadmin": "http://localhost:8089"
+      }
+    },
+    {
+      "name": "mstesting",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/mstesting",
+      "status": "stopped",
+      "createdAt": "2025-09-21T03:41:14.479Z",
+      "phpVersion": "8.1",
+      "hasSSL": false,
+      "isMultisite": true,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8108,
+      "mailhogPort": 8111,
+      "wpPort": 8108,
+      "urls": {
+        "wordpress": "http://localhost:8108",
+        "mailhog": "http://localhost:8111",
+        "phpmyadmin": "http://localhost:8108"
+      }
+    },
+    {
+      "name": "newtestdir",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/newtestdir",
+      "status": "stopped",
+      "createdAt": "2025-09-21T03:57:13.387Z",
+      "phpVersion": "8.1",
+      "hasSSL": false,
+      "isMultisite": true,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8113,
+      "mailhogPort": 8116,
+      "wpPort": 8113,
+      "urls": {
+        "wordpress": "http://localhost:8113",
+        "mailhog": "http://localhost:8116",
+        "phpmyadmin": "http://localhost:8113"
+      }
+    },
+    {
+      "name": "finaltest",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/finaltest",
+      "status": "stopped",
+      "createdAt": "2025-09-21T04:11:12.277Z",
+      "phpVersion": "8.1",
+      "hasSSL": false,
+      "isMultisite": true,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8118,
+      "mailhogPort": 8121,
+      "wpPort": 8118,
+      "urls": {
+        "wordpress": "http://localhost:8118",
+        "mailhog": "http://localhost:8121",
+        "phpmyadmin": "http://localhost:8118"
+      }
+    },
+    {
+      "name": "newfinal",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/newfinal",
+      "status": "stopped",
+      "createdAt": "2025-09-21T04:27:15.194Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": true,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8123,
+      "mailhogPort": 8125,
+      "wpPort": 8123,
+      "urls": {
+        "wordpress": "https://newfinal.test",
+        "mailhog": "http://localhost:8125",
+        "phpmyadmin": "http://localhost:8123"
+      }
+    },
+    {
+      "name": "docker",
+      "path": "/Users/danielkapin/Projects/wpspin-testing/docker",
+      "status": "stopped",
+      "createdAt": "2025-09-22T13:44:29.277Z",
+      "phpVersion": "8.1",
+      "hasSSL": true,
+      "isMultisite": false,
+      "hasMailhog": true,
+      "hasXdebug": true,
+      "healthStatus": "unknown",
+      "customDomain": null,
+      "dbPort": 8127,
+      "mailhogPort": 8129,
+      "wpPort": 8127,
+      "urls": {
+        "wordpress": "https://docker.test",
+        "mailhog": "http://localhost:8129",
+        "phpmyadmin": "http://localhost:8127"
+      }
+    }
+  ]
+}

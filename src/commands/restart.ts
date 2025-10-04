@@ -5,6 +5,7 @@ import * as fs from 'node:fs';
 import path from 'node:path';
 import ora from 'ora';
 
+import { detectAndMigrateSiteConfig, getSiteByPath, updateSiteConfigWithDetected } from '../config/sites.js';
 import { DockerService } from '../services/docker.js';
 import { BaseCommand, baseFlags } from './base.js';
 
@@ -50,44 +51,56 @@ export default class Restart extends BaseCommand {
       // Check Docker environment
       await this.checkDockerEnvironment();
 
+      // Get site configuration with auto-migration
+      let siteConfig = getSiteByPath(projectPath);
+
+      // Auto-migrate missing configuration if site exists but has incomplete config
+      if (siteConfig && (!siteConfig.domain || siteConfig.ssl === undefined || siteConfig.multisite === undefined)) {
+        spinner.text = 'Updating site configuration with detected settings...';
+
+        // Detect missing configuration from fallback sources
+        const detectedConfig = detectAndMigrateSiteConfig(projectPath);
+
+        // Update the site config with detected settings
+        if (Object.keys(detectedConfig).length > 0) {
+          updateSiteConfigWithDetected(siteConfig.name, detectedConfig);
+
+          // Re-fetch the updated config
+          siteConfig = getSiteByPath(projectPath);
+          spinner.succeed('Site configuration updated with detected settings');
+        }
+      }
+
+      const domain = siteConfig?.domain;
+
       // Initialize nginx proxy if domain is configured
-      if (!this.nginxProxy) {
+      if (domain && !this.nginxProxy) {
         this.nginxProxy = new (await import('../services/nginx-proxy.js')).NginxProxyService();
       }
-
-      // Read project configuration
-      const configPath = path.join(projectPath, '.wp-spin');
-      if (!fs.existsSync(configPath)) {
-        spinner.info('No project configuration found');
-        // Restart containers with environment reload to pick up XDEBUG_MODE changes
-        await this.docker.restartWithEnvReload();
-        spinner.succeed('WordPress environment restarted successfully');
-        return;
-      }
-
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      const { domain } = config;
 
       if (!domain) {
         spinner.info('No domain configuration found for this site');
         // Restart containers with environment reload to pick up XDEBUG_MODE changes
-        await this.docker.restartWithEnvReload();
+        await this.docker.restartWithEnvReload(false);
         spinner.succeed('WordPress environment restarted successfully');
         return;
       }
+
+      // Ensure nginx-proxy container is running when we have a domain
+      await this.nginxProxy!.ensureProxyRunning();
       
       // Check if this domain is configured
       const currentPort = this.nginxProxy.getPortForDomain(domain);
       if (!currentPort) {
         spinner.info('No nginx configuration found for this domain');
         // Restart containers with environment reload to pick up XDEBUG_MODE changes
-        await this.docker.restartWithEnvReload();
+        await this.docker.restartWithEnvReload(false);
         spinner.succeed('WordPress environment restarted successfully');
         return;
       }
 
       // Restart containers with environment reload to pick up XDEBUG_MODE changes
-      await this.docker.restartWithEnvReload();
+      await this.docker.restartWithEnvReload(false);
 
       // Setup Xdebug if enabled
       if (flags.xdebug) {
